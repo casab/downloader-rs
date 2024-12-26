@@ -1,8 +1,9 @@
 use anyhow::{anyhow, Result};
 use clap::Parser;
+use futures_util::StreamExt;
 use reqwest::header::CONTENT_DISPOSITION;
-use std::fs::File;
-use std::io;
+use tokio::fs::File;
+use tokio::io::AsyncWriteExt;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -12,44 +13,40 @@ struct Args {
 }
 
 fn get_file_name(resp: &reqwest::Response) -> Result<String> {
-    let file_name = if let Some(header) = resp.headers().get(CONTENT_DISPOSITION) {
-        header
-            .to_str()
-            .expect("failed to convert header value to string")
-            .split("filename=")
-            .collect::<Vec<&str>>()[1]
-            .to_string()
-    } else {
-        resp.url()
-            .path_segments()
-            .and_then(|segments| segments.last())
-            .unwrap()
-            .to_string()
-    };
-    if file_name.is_empty() {
-        return Err(anyhow!("failed to get file name"));
+    if let Some(header) = resp.headers().get(CONTENT_DISPOSITION) {
+        let header_value = header.to_str()?;
+        if let Some(filename) = header_value.split("filename=").nth(1) {
+            return Ok(filename.trim_matches('"').to_string());
+        }
     }
-    Ok(file_name)
+    resp.url()
+        .path_segments()
+        .and_then(|segments| segments.last())
+        .filter(|&s| !s.is_empty())
+        .map(|s| s.to_string())
+        .ok_or_else(|| anyhow!("failed to get file name"))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
     for file_link in args.link.iter() {
-        let resp = reqwest::get(file_link).await.expect("request failed");
+        println!("Downloading: {file_link}");
 
+        let resp = reqwest::get(file_link).await?;
         let filename = get_file_name(&resp)?;
 
-        let mut file = File::create(filename).expect("failed to create file");
-        io::copy(
-            &mut resp
-                .bytes()
-                .await
-                .expect("failed to read response body")
-                .as_ref(),
-            &mut file,
-        )
-        .expect("failed to copy response body to file");
+        println!("Saving as: {filename}");
+
+        let mut file = File::create(&filename).await?;
+        let mut stream = resp.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = chunk?;
+            file.write_all(&chunk).await?;
+        }
+
+        println!("Download complete: {filename}");
     }
     Ok(())
 }
