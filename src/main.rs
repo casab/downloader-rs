@@ -1,19 +1,12 @@
 use anyhow::{anyhow, Context, Result};
 use bytes::Bytes;
-use clap::Parser;
+use downloader::cli::get_args;
 use downloader::telemetry::{get_subscriber, init_subscriber};
 use futures_util::stream::Stream;
 use futures_util::StreamExt;
 use reqwest::header::CONTENT_DISPOSITION;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
-
-#[derive(Parser, Debug)]
-#[command(version, about, long_about = None)]
-struct Args {
-    #[arg(short, long, num_args=1..)]
-    link: Vec<String>,
-}
 
 #[tracing::instrument(name = "Get file name from the link", skip(resp))]
 fn get_file_name(resp: &reqwest::Response) -> Result<String> {
@@ -50,16 +43,20 @@ async fn main() -> Result<()> {
     let tracing_subscriber = get_subscriber("downloader-rs".into(), "info".into(), std::io::stdout);
     init_subscriber(tracing_subscriber);
 
-    let args = Args::parse();
-    for file_link in args.link.iter() {
-        let resp = reqwest::get(file_link)
-            .await
-            .context("Failed to send request")?;
-        let filename = get_file_name(&resp).context("Failed to get file name")?;
+    let args = get_args();
+    if args.api {
+        todo!();
+    } else {
+        for file_link in args.links.iter() {
+            let resp = reqwest::get(file_link)
+                .await
+                .context("Failed to send request")?;
+            let filename = get_file_name(&resp).context("Failed to get file name")?;
 
-        write_to_file(&filename, resp.bytes_stream())
-            .await
-            .context("Failed to write to a file")?;
+            write_to_file(&filename, resp.bytes_stream())
+                .await
+                .context("Failed to write to a file")?;
+        }
     }
     Ok(())
 }
