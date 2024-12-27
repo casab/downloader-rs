@@ -102,6 +102,10 @@ _Below is an example of how you can instruct your audience on installing and set
 <!-- ROADMAP -->
 ## Roadmap
 
+More like todo...
+
+- [ ] Parse MIME types properly
+- [ ] Add concurrent multi part downloading
 - [ ] Add REST API
 - [ ] Add jobs for downloading
 - [ ] Collect metrics on downloading jobs
