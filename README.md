@@ -72,7 +72,7 @@
 <!-- ABOUT THE PROJECT -->
 ## About The Project
 
-I just wanted to Rust for no particular reason. Therefore I decided to create this project.
+I just wanted to use Rust for no particular reason. Therefore I decided to create this project.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -105,6 +105,7 @@ _Below is an example of how you can instruct your audience on installing and set
 - [ ] Add REST API
 - [ ] Add jobs for downloading
 - [ ] Collect metrics on downloading jobs
+- [ ] Add some event driven shit
 
 
 See the [open issues](https://github.com/casab/downloader-rs/issues) for a full list of proposed features (and known issues).
@@ -141,7 +142,7 @@ Project Link: [https://github.com/casab/downloader-rs](https://github.com/casab/
 [issues-shield]: https://img.shields.io/github/issues/casab/downloader-rs.svg?style=for-the-badge
 [issues-url]: https://github.com/casab/downloader-rs/issues
 [license-shield]: https://img.shields.io/github/license/casab/downloader-rs.svg?style=for-the-badge
-[license-url]: https://github.com/casab/downloader-rs/blob/master/LICENSE.txt
+[license-url]: https://github.com/casab/downloader-rs/blob/main/LICENSE.txt
 
 [Rust-lang]: https://img.shields.io/badge/rust-000000?style=for-the-badge&logo=rust&logoColor=white
 [Rust-url]: https://rust-lang.org/
