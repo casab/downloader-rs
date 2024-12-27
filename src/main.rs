@@ -38,6 +38,19 @@ async fn write_to_file(
     Ok(())
 }
 
+#[tracing::instrument(name = "Download a file")]
+async fn download_file(file_link: &str) -> Result<()> {
+    let resp = reqwest::get(file_link)
+        .await
+        .context("Failed to send request")?;
+    let filename = get_file_name(&resp).context("Failed to get file name")?;
+
+    write_to_file(&filename, resp.bytes_stream())
+        .await
+        .context("Failed to write to a file")?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let tracing_subscriber = get_subscriber("downloader-rs".into(), "info".into(), std::io::stdout);
@@ -47,15 +60,8 @@ async fn main() -> Result<()> {
     if args.api {
         todo!();
     } else {
-        for file_link in args.links.iter() {
-            let resp = reqwest::get(file_link)
-                .await
-                .context("Failed to send request")?;
-            let filename = get_file_name(&resp).context("Failed to get file name")?;
-
-            write_to_file(&filename, resp.bytes_stream())
-                .await
-                .context("Failed to write to a file")?;
+        for file_link in &args.links {
+            download_file(file_link).await?;
         }
     }
     Ok(())

@@ -1,4 +1,4 @@
-use clap::{ArgAction, Parser};
+use clap::Parser;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -6,7 +6,7 @@ pub struct Args {
     #[arg(short, long, num_args=1..)]
     pub links: Vec<String>,
 
-    #[arg(short, long, action=ArgAction::SetFalse)]
+    #[arg(short, long)]
     pub api: bool,
 }
 
