@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use downloader::api::{get_connection_pool, Application};
 use downloader::configuration::{get_configuration, DatabaseSettings};
 use downloader::telemetry::{get_subscriber, init_subscriber};
