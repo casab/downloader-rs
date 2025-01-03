@@ -41,6 +41,11 @@ pub async fn download_file(file_link: &str) -> Result<()> {
     let resp = reqwest::get(file_link)
         .await
         .context("Failed to send request")?;
+
+    if !resp.status().is_success() {
+        return Err(anyhow!("Server returned error status: {}", resp.status()));
+    }
+
     let filename = get_file_name(&resp).context("Failed to get file name")?;
 
     write_to_file(&filename, resp.bytes_stream())

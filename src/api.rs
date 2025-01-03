@@ -1,5 +1,5 @@
 use crate::configuration::{DatabaseSettings, Settings};
-use crate::routes::{download, health_check};
+use crate::routes::{download, get_download, get_downloads, health_check};
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
@@ -57,7 +57,9 @@ async fn run(
             .wrap(TracingLogger::default())
             .service(
                 web::scope("/api/v1")
-                    .route("/download", web::get().to(download))
+                    .route("/download_file", web::get().to(download))
+                    .route("/downloads/{id}", web::get().to(get_download))
+                    .route("/downloads", web::get().to(get_downloads))
                     .route("/health_check", web::get().to(health_check)),
             )
             .app_data(db_pool.clone())

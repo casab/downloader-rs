@@ -25,17 +25,7 @@ pub struct TestApp {
     pub api_client: reqwest::Client,
 }
 
-impl TestApp {
-    pub async fn post_subscriptions(&self, body: String) -> reqwest::Response {
-        self.api_client
-            .post(&format!("{}/subscriptions", &self.address))
-            .header("Content-Type", "application/x-www-form-urlencoded")
-            .body(body)
-            .send()
-            .await
-            .expect("Failed to execute request.")
-    }
-}
+impl TestApp {}
 
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
