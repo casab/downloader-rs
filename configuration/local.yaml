@@ -1,6 +1,6 @@
 application:
-  host: 127.0.0.1
-  base_url: "http://127.0.0.1"
+  host: 0.0.0.0
+  base_url: "http://0.0.0.0"
 
 database:
   require_ssl: false

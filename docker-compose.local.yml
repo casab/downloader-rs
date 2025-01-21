@@ -1,0 +1,35 @@
+volumes:
+    downloader_rs_local_postgres_data: {}
+    downloader_rs_local_postgres_data_backups: {}
+
+services:
+    downloader-rs:
+        build:
+            context: .
+            dockerfile: ./compose/local/downloader-rs/Dockerfile
+        image: downloader_rs_local_downloader
+        container_name: downloader_rs_local_downloader
+        volumes:
+            - .:/app:z
+        depends_on:
+            - postgres
+        env_file:
+            - ./.envs/.local/.downloader-rs
+            - ./.envs/.local/.postgres
+        ports:
+            - "8000:8000"
+        command: /start
+
+    postgres:
+        build:
+            context: .
+            dockerfile: ./compose/production/postgres/Dockerfile
+        image: downloader_rs_local_postgres
+        container_name: downloader_rs_local_postgres
+        volumes:
+            - downloader_rs_local_postgres_data:/var/lib/postgresql/data
+            - downloader_rs_local_postgres_data_backups:/backups
+        env_file:
+            - ./.envs/.local/.postgres
+        ports:
+            - "5432:5432"

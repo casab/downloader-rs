@@ -1,0 +1,88 @@
+// For format details, see https://containers.dev/implementors/json_reference/
+{
+    "name": "downloader_rs_dev",
+    "dockerComposeFile": [
+        "../docker-compose.local.yml"
+    ],
+    "init": true,
+    "features": {
+        "ghcr.io/devcontainers/features/common-utils:latest": {
+            "version": "latest",
+            "installZsh": true,
+            "configureZshAsDefaultShell": true,
+            "installOhMyZsh": true,
+            "installOhMyZshConfig": true,
+            "upgradePackages": false
+        }
+    },
+    "mounts": [
+        {
+            "source": "./.devcontainer/zsh_history",
+            "target": "/home/dev-user/.zsh_history",
+            "type": "bind"
+        },
+        {
+            "source": "~/.ssh",
+            "target": "/home/dev-user/.ssh",
+            "type": "bind"
+        }
+    ],
+    // Tells devcontainer.json supporting services / tools whether they should run
+    // /bin/sh -c "while sleep 1000; do :; done" when starting the container instead of the container’s default command
+    "overrideCommand": false,
+    "service": "downloader-rs",
+    // "remoteEnv": {"PATH": "/home/dev-user/.local/bin:${containerEnv:PATH}"},
+    "remoteUser": "root",
+    "workspaceFolder": "/app",
+    // Set *default* container specific settings.json values on container create.
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "editor.tabSize": 4,
+                "editor.formatOnSave": true,
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "bash",
+                        "icon": "terminal-bash"
+                    },
+                    "zsh": {
+                        "path": "zsh"
+                    },
+                    "tmux": {
+                        "path": "tmux",
+                        "icon": "terminal-tmux"
+                    }
+                },
+                "terminal.integrated.defaultProfile.linux": "zsh",
+                "rust-analyzer.cargo.targetDir": "target/rls/",
+                "rust-analyzer.runnables.extraArgs": [
+                    "--target-dir=target/rls/"
+                ]
+            },
+            // https://code.visualstudio.com/docs/remote/devcontainerjson-reference#_vs-code-specific-properties
+            // Add the IDs of extensions you want installed when the container is created.
+            "extensions": [
+                "davidanson.vscode-markdownlint",
+                "mrmlnc.vscode-duplicate",
+                "visualstudioexptteam.vscodeintellicode",
+                "visualstudioexptteam.intellicode-api-usage-examples",
+                "fill-labs.dependi",
+                "timonwong.shellcheck",
+                "tamasfe.even-better-toml",
+                "wayou.vscode-todo-highlight",
+                "ms-azuretools.vscode-docker",
+                "eamodio.gitlens",
+                "rust-lang.rust-analyzer",
+                "vadimcn.vscode-lldb",
+                "hbenl.vscode-test-explorer",
+                "swellaby.vscode-rust-test-adapter"
+            ]
+        }
+    },
+    // Uncomment the next line if you want start specific services in your Docker Compose config.
+    // "runServices": [],
+    // Uncomment the next line if you want to keep your containers running after VS Code shuts down.
+    // "shutdownAction": "none",
+    // Uncomment the next line to run commands after the container is created.
+    "postCreateCommand": "cat .devcontainer/zshrc.override.sh >> ~/.zshrc && git config --global --add safe.directory ${containerWorkspaceFolder}"
+}

@@ -16,14 +16,14 @@ actix-web = "4.9.0"
 anyhow = "1.0.95"
 bytes = "1.9.0"
 chrono = { version = "0.4.39", features = ["serde"] }
-clap = { version = "4.5.23", features = ["derive"] }
-config = "0.15.4"
+clap = { version = "4.5.27", features = ["derive"] }
+config = "0.15.6"
 futures-util = "0.3.31"
 reqwest = { version = "0.12.12", features = ["multipart", "stream", "json"] }
 secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0.217", features = ["derive"] }
 serde-aux = "4.5.0"
-tokio = { version = "1.42.0", features = ["fs", "macros", "rt-multi-thread"] }
+tokio = { version = "1.43.0", features = ["fs", "macros", "rt-multi-thread"] }
 tracing = { version = "0.1.41", features = ["log"] }
 tracing-actix-web = "0.7.15"
 tracing-attributes = "0.1.28"
@@ -33,11 +33,11 @@ tracing-subscriber = { version = "0.3.19", features = [
     "registry",
     "env-filter",
 ] }
-uuid = "1.11.0"
+uuid = "1.12.1"
 wiremock = "0.6.2"
 
 [dependencies.sqlx]
-version = "0.8.2"
+version = "0.8.3"
 default-features = false
 features = [
     "runtime-tokio-rustls",

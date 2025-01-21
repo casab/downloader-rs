@@ -1,0 +1,41 @@
+volumes:
+    production_postgres_data: {}
+    production_postgres_data_backups: {}
+
+services:
+    downloader-rs:
+        build:
+            context: .
+            dockerfile: ./compose/production/downloader-rs/Dockerfile
+        image: downloader_rs_production_app
+        depends_on:
+            - postgres
+        env_file:
+            - ./.envs/.production/.downloader-rs
+            - ./.envs/.production/.postgres
+        command: /start
+
+    postgres:
+        build:
+            context: .
+            dockerfile: ./compose/production/postgres/Dockerfile
+        image: downloader_rs_production_postgres
+        volumes:
+            - production_postgres_data:/var/lib/postgresql/data
+            - production_postgres_data_backups:/backups
+        env_file:
+            - ./.envs/.production/.postgres
+
+    traefik:
+        build:
+        context: .
+        dockerfile: ./compose/production/traefik/Dockerfile
+        image: downloader_rs_production_traefik
+        depends_on:
+            - downloader-rs
+        volumes:
+            - production_traefik:/etc/traefik/acme
+        ports:
+            - "0.0.0.0:80:80"
+            - "0.0.0.0:443:443"
+            - "0.0.0.0:5555:5555"

@@ -1,0 +1,15 @@
+#!/bin/bash
+
+set -o errexit
+set -o pipefail
+set -o nounset
+
+# Apply migrations
+sqlx database create
+sqlx migrate run
+
+>&2 echo "Postgres has been migrated, ready to go!"
+
+# Start the downloader service
+echo "Starting downloader service..."
+exec bacon --headless run-long | bunyan

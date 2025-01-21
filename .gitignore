@@ -1,2 +1,29 @@
 /target
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+### VisualStudioCode template
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Local History for devcontainer
+.devcontainer/zsh_history
+.devcontainer/bash_history
+
+### Project template
 .env
+.envs/*
+!.envs/.local/

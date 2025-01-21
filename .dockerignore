@@ -1,5 +1,5 @@
 .env
-.dockerignore
+# .dockerignore
 spec.yaml
 target/
 deploy/
