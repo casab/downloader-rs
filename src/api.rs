@@ -1,5 +1,6 @@
 use crate::configuration::{DatabaseSettings, Settings};
 use crate::routes::{download, get_download, get_downloads, health_check};
+use crate::utils::error_handler;
 use actix_web::dev::Server;
 use actix_web::{web, App, HttpServer};
 use sqlx::postgres::PgPoolOptions;
@@ -64,6 +65,9 @@ async fn run(
             )
             .app_data(db_pool.clone())
             .app_data(base_url.clone())
+            .app_data(web::JsonConfig::default().error_handler(error_handler))
+            .app_data(web::PathConfig::default().error_handler(error_handler))
+            .app_data(web::QueryConfig::default().error_handler(error_handler))
     })
     .listen(listener)?
     .run();
