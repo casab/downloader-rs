@@ -104,12 +104,9 @@ _Below is an example of how you can instruct your audience on installing and set
 
 More like todo...
 
-- [ ] Parse MIME types properly
-- [ ] Add concurrent multi part downloading
-- [ ] Add REST API
-- [ ] Add jobs for downloading
-- [ ] Collect metrics on downloading jobs
-- [ ] Add some event driven shit
+- [ ] Add jobs for downloading by creating by producing events on api calls, and move actual downloading to consumers
+- [ ] Collect metrics on downloading jobs by emitting event data for downloads
+- [ ] Add s3 compatible save target
 
 
 See the [open issues](https://github.com/casab/downloader-rs/issues) for a full list of proposed features (and known issues).
