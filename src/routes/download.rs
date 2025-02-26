@@ -18,11 +18,11 @@ pub async fn download(
     s3_client: web::Data<Option<S3Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
-    let download = create_download(&file_link, &pool).await.map_err(e500)?;
+    let download = create_download(file_link, &pool).await.map_err(e500)?;
 
     match download_file(file_link, s3_client.get_ref().clone()).await {
         Ok(file_path) => {
-            let _ = update_download_status(
+            update_download_status(
                 download.id,
                 DownloadStatus::Completed,
                 Some(file_path),
@@ -34,7 +34,7 @@ pub async fn download(
         }
         Err(err) => {
             tracing::error!(error = ?err, download_id = download.id, "Failed to download the file");
-            let _ = update_download_status(download.id, DownloadStatus::Failed, None, &pool)
+            update_download_status(download.id, DownloadStatus::Failed, None, &pool)
                 .await
                 .map_err(e500)?;
             use manic::ManicError;
