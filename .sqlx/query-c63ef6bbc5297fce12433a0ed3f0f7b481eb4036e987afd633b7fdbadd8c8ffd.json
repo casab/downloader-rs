@@ -20,16 +20,21 @@
       },
       {
         "ordinal": 3,
+        "name": "file_path",
+        "type_info": "Text"
+      },
+      {
+        "ordinal": 4,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 4,
+        "ordinal": 5,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "completed_at",
         "type_info": "Timestamptz"
       }
@@ -41,6 +46,7 @@
       false,
       false,
       false,
+      true,
       false,
       false,
       true

@@ -10,7 +10,7 @@ async fn create_test_download(pool: &PgPool) -> Download {
         r#"
         INSERT INTO downloads (url, status, created_at, updated_at)
         VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, url, status as "status: DownloadStatus", created_at, updated_at, completed_at
+        RETURNING id, url, status as "status: DownloadStatus", file_path, created_at, updated_at, completed_at
         "#,
         "https://example.com/test.zip",
         "PENDING"
@@ -130,7 +130,7 @@ async fn download_file_returns_500_for_server_error() {
 
     Mock::given(method("GET"))
         .and(path("/error.zip"))
-        .respond_with(ResponseTemplate::new(500))
+        .respond_with(ResponseTemplate::new(500).insert_header("content-length", "52"))
         .mount(&mock_server)
         .await;
 

@@ -18,9 +18,11 @@ bytes = "1.10.0"
 chrono = { version = "0.4.39", features = ["serde"] }
 clap = { version = "4.5.31", features = ["derive"] }
 config = "0.15.8"
+dotenv = "0.15.0"
 futures-util = "0.3.31"
 manic = "0.8.1"
 reqwest = { version = "0.12.12", features = ["multipart", "stream", "json"] }
+rust-s3 = "0.35.1"
 secrecy = { version = "0.10.3", features = ["serde"] }
 serde = { version = "1.0.218", features = ["derive"] }
 serde-aux = "4.6.0"

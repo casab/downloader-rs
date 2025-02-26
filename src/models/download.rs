@@ -6,6 +6,7 @@ pub struct Download {
     pub id: i64,
     pub url: String,
     pub status: DownloadStatus,
+    pub file_path: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub completed_at: Option<DateTime<Utc>>,

@@ -1,3 +1,4 @@
+use crate::clients::S3Client;
 use crate::models::{Download, DownloadStatus};
 use crate::repository::{create_download, get_download_by_id, update_download_status};
 use crate::utils::{download_file, e404, e500};
@@ -14,25 +15,31 @@ pub struct Parameters {
 pub async fn download(
     parameters: web::Query<Parameters>,
     pool: web::Data<PgPool>,
+    s3_client: web::Data<Option<S3Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
     let download = create_download(&file_link, &pool).await.map_err(e500)?;
 
-    match download_file(file_link).await {
-        Ok(_) => {
-            let _ = update_download_status(download.id, DownloadStatus::Completed, &pool)
-                .await
-                .map_err(e500)?;
+    match download_file(file_link, s3_client.get_ref().clone()).await {
+        Ok(file_path) => {
+            let _ = update_download_status(
+                download.id,
+                DownloadStatus::Completed,
+                Some(file_path),
+                &pool,
+            )
+            .await
+            .map_err(e500)?;
             return Ok(HttpResponse::Ok().finish());
         }
         Err(err) => {
             tracing::error!(error = ?err, download_id = download.id, "Failed to download the file");
-            let _ = update_download_status(download.id, DownloadStatus::Failed, &pool)
+            let _ = update_download_status(download.id, DownloadStatus::Failed, None, &pool)
                 .await
                 .map_err(e500)?;
             use manic::ManicError;
             return match err {
-                ManicError::NoLen | ManicError::NotFound => Err(e404("Failed to find the file")),
+                ManicError::NotFound => Err(e404("Failed to find the file")),
                 _ => Err(e500("Failed to download the file")),
             };
         }
@@ -46,7 +53,10 @@ pub async fn get_download(
 ) -> Result<HttpResponse, actix_web::Error> {
     let id = parameters.into_inner();
     let download = get_download_by_id(id, &pool).await.map_err(e500)?;
-    Ok(HttpResponse::Ok().json(download))
+    match download {
+        Some(download) => Ok(HttpResponse::Ok().json(download)),
+        None => Err(e404("Download not found")),
+    }
 }
 
 #[tracing::instrument(name = "Get all downloads", skip(pool))]

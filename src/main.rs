@@ -17,7 +17,7 @@ async fn main() -> Result<()> {
         web_api.run_until_stopped().await?;
     } else {
         for file_link in &args.links {
-            download_file(file_link).await?;
+            download_file(file_link, None).await?;
         }
     }
     Ok(())

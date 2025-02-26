@@ -1,5 +1,6 @@
 pub mod api;
 pub mod cli;
+pub mod clients;
 pub mod configuration;
 pub mod models;
 pub mod repository;

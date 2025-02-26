@@ -3,13 +3,14 @@ use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::postgres::{PgConnectOptions, PgSslMode};
 use sqlx::ConnectOptions;
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Debug)]
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
+    pub s3: Option<S3Settings>,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Debug)]
 pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,
@@ -17,7 +18,7 @@ pub struct ApplicationSettings {
     pub base_url: String,
 }
 
-#[derive(serde::Deserialize, Clone)]
+#[derive(serde::Deserialize, Clone, Debug)]
 pub struct DatabaseSettings {
     pub username: String,
     pub password: SecretString,
@@ -26,6 +27,13 @@ pub struct DatabaseSettings {
     pub host: String,
     pub database_name: String,
     pub require_ssl: bool,
+}
+
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct S3Settings {
+    pub bucket_name: String,
+    pub region: String,
+    pub endpoint: Option<String>,
 }
 
 impl DatabaseSettings {
@@ -53,6 +61,7 @@ impl DatabaseSettings {
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine the current directory");
     let configuration_directory = base_path.join("configuration");
+    dotenv::dotenv().ok();
 
     // Detect the running environment
     // Default to `local` if unspecified

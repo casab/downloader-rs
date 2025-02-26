@@ -1,0 +1,16 @@
+{
+  "db_name": "PostgreSQL",
+  "query": "UPDATE downloads SET status = $1, completed_at = NOW(), updated_at = NOW(), file_path = $3 WHERE id = $2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Left": [
+        "Text",
+        "Int8",
+        "Text"
+      ]
+    },
+    "nullable": []
+  },
+  "hash": "d24c44dfb6f3e3153d3c2fd886a334d403d4146f56f587bd15021ba20e18fa5d"
+}

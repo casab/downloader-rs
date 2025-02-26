@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM downloads WHERE id = $1",
+  "query": "\n        INSERT INTO downloads (url, status, created_at, updated_at)\n        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n        RETURNING id, url, status as \"status: DownloadStatus\", file_path, created_at, updated_at, completed_at\n        ",
   "describe": {
     "columns": [
       {
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "status",
+        "name": "status: DownloadStatus",
         "type_info": "Text"
       },
       {
@@ -41,7 +41,8 @@
     ],
     "parameters": {
       "Left": [
-        "Int8"
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
@@ -54,5 +55,5 @@
       true
     ]
   },
-  "hash": "f61276f7dcafb7f2850b19c7d5d1fb59dbb61ba6bdc16ec0bd1cde1e4eb2160b"
+  "hash": "eaf0cee5696a66f1de40d3d2d8a172ccaa7e99c90b29f95899433c8816d30d8c"
 }
