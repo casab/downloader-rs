@@ -38,7 +38,7 @@ pub async fn login(
         Ok(user_id) => {
             tracing::Span::current().record("user_id", tracing::field::display(&user_id));
             session.renew();
-            session.insert_user_id(user_id).map_err(|e| e401(e))?;
+            session.insert_user_id(user_id).map_err(e401)?;
             Ok(HttpResponse::Ok().json(AuthResponse { user_id }))
         }
         Err(e) => Err(e401(e)),
@@ -63,7 +63,7 @@ pub async fn register(
         Ok(user_id) => {
             tracing::Span::current().record("user_id", tracing::field::display(&user_id));
             session.renew();
-            session.insert_user_id(user_id).map_err(|e| e401(e))?;
+            session.insert_user_id(user_id).map_err(e401)?;
             Ok(HttpResponse::Ok().json(AuthResponse { user_id }))
         }
         Err(e) => Err(e500(e)),
@@ -84,7 +84,7 @@ CWOrkoo7oJBQ/iyh7uJ0LO2aLEfrHwTWllSAxT0zRno"
     );
 
     if let Some((stored_user_id, stored_password_hash)) =
-        get_stored_credentials(&credentials.email, &pool).await?
+        get_stored_credentials(&credentials.email, pool).await?
     {
         user_id = Some(stored_user_id);
         expected_password_hash = stored_password_hash;
