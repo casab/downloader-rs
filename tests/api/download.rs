@@ -1,20 +1,21 @@
-use crate::helpers::spawn_app;
+use crate::helpers::{spawn_app, TestUser};
 use downloader::models::{Download, DownloadStatus};
 use sqlx::PgPool;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-async fn create_test_download(pool: &PgPool) -> Download {
+async fn create_test_download(pool: &PgPool, test_user: &TestUser) -> Download {
     sqlx::query_as!(
         Download,
         r#"
-        INSERT INTO downloads (url, status, user_id, created_at, updated_at)
-        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        INSERT INTO downloads (id, url, status, user_id, created_at, updated_at)
+        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id, url, user_id, status as "status: DownloadStatus", file_path, created_at, updated_at, completed_at
         "#,
+        uuid::Uuid::new_v4(),
         "https://example.com/test.zip",
         "PENDING",
-        uuid::Uuid::new_v4()
+        test_user.id
     )
     .fetch_one(pool)
     .await
@@ -25,9 +26,11 @@ async fn create_test_download(pool: &PgPool) -> Download {
 async fn get_download_returns_200_for_existing_download() {
     // Arrange
     let app = spawn_app().await;
-    let download = create_test_download(&app.db_pool).await;
+    let download = create_test_download(&app.db_pool, &app.test_user).await;
 
     // Act
+    app.test_user.login(&app).await;
+
     let response = app
         .api_client
         .get(&format!(
@@ -51,9 +54,11 @@ async fn get_download_returns_200_for_existing_download() {
 async fn get_download_returns_404_for_non_existent_download() {
     // Arrange
     let app = spawn_app().await;
-    let non_existent_id = 999999;
+    let non_existent_id = uuid::Uuid::new_v4();
 
     // Act
+    app.test_user.login(&app).await;
+
     let response = app
         .api_client
         .get(&format!(
@@ -72,10 +77,12 @@ async fn get_download_returns_404_for_non_existent_download() {
 async fn get_downloads_returns_200_and_list() {
     // Arrange
     let app = spawn_app().await;
-    let download1 = create_test_download(&app.db_pool).await;
-    let download2 = create_test_download(&app.db_pool).await;
+    let download1 = create_test_download(&app.db_pool, &app.test_user).await;
+    let download2 = create_test_download(&app.db_pool, &app.test_user).await;
 
     // Act
+    app.test_user.login(&app).await;
+
     let response = app
         .api_client
         .get(&format!("{}/api/v1/downloads", &app.address))
@@ -109,6 +116,8 @@ async fn download_file_returns_200_for_valid_url() {
     let test_url = format!("{}/test.zip", &mock_server.uri());
 
     // Act
+    app.test_user.login(&app).await;
+
     let response = app
         .api_client
         .get(&format!(
@@ -138,6 +147,8 @@ async fn download_file_returns_500_for_server_error() {
     let test_url = format!("{}/error.zip", &mock_server.uri());
 
     // Act
+    app.test_user.login(&app).await;
+
     let response = app
         .api_client
         .get(&format!(

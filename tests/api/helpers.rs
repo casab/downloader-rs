@@ -68,9 +68,30 @@ impl TestUser {
         .await
         .expect("Failed to store test user.");
     }
+
+    pub async fn login(&self, app: &TestApp) {
+        app.post_login(&serde_json::json!({
+            "email": &self.email,
+            "password": &self.password
+        }))
+        .await;
+    }
 }
 
-impl TestApp {}
+impl TestApp {
+    pub async fn post_login<Body>(&self, body: &Body) -> reqwest::Response
+    where
+        Body: serde::Serialize,
+    {
+        self.api_client
+            .post(&format!("{}/api/v1/auth", &self.address))
+            .json(body)
+            .header("Content-Type", "application/json")
+            .send()
+            .await
+            .expect("Failed to execute request.")
+    }
+}
 
 pub async fn spawn_app() -> TestApp {
     Lazy::force(&TRACING);
@@ -92,6 +113,7 @@ pub async fn spawn_app() -> TestApp {
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        .cookie_store(true)
         .build()
         .unwrap();
 
@@ -102,6 +124,9 @@ pub async fn spawn_app() -> TestApp {
         test_user: TestUser::generate(),
         api_client: client,
     };
+
+    test_app.test_user.store(&test_app.db_pool).await;
+
     test_app
 }
 
