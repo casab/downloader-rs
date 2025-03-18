@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO downloads (url, status, user_id, created_at, updated_at)\n        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n        RETURNING id, url, user_id, status as \"status: DownloadStatus\", file_path, created_at, updated_at, completed_at\n        ",
+  "query": "\n        INSERT INTO downloads (id, url, status, user_id, created_at, updated_at)\n        VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n        RETURNING id, url, user_id, status as \"status: DownloadStatus\", file_path, created_at, updated_at, completed_at\n        ",
   "describe": {
     "columns": [
       {
@@ -46,6 +46,7 @@
     ],
     "parameters": {
       "Left": [
+        "Uuid",
         "Text",
         "Text",
         "Uuid"
@@ -62,5 +63,5 @@
       true
     ]
   },
-  "hash": "59914725cbd437c594e948972f9fcca69b12dbfce7cf2a11f67b5d27077efc66"
+  "hash": "84a385c27f1340eb625f1809e2954f17604329a475363577dda7865f68ee5e91"
 }
