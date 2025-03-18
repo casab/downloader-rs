@@ -34,11 +34,7 @@
   <p align="center">
     An unnecessarily complicated downloader
     <br />
-    <a href="https://github.com/casab/downloader-rs"><strong>Explore the docs »</strong></a>
     <br />
-    <br />
-    <a href="https://github.com/casab/downloader-rs">View Demo</a>
-    ·
     <a href="https://github.com/casab/downloader-rs/issues/new?labels=bug&template=bug-report---.md">Report Bug</a>
     ·
     <a href="https://github.com/casab/downloader-rs/issues/new?labels=enhancement&template=feature-request---.md">Request Feature</a>
@@ -80,9 +76,10 @@ I just wanted to use Rust for no particular reason. Therefore I decided to creat
 
 ### Built With
 
-This section should list any major frameworks/libraries used to bootstrap your project. Leave any add-ons/plugins for the acknowledgements section. Here are a few examples.
-
 * [![Rust][Rust-lang]][Rust-url]
+* [Tokio][Tokio-url]
+* [Actix][Actix-url]
+
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -93,9 +90,9 @@ This section should list any major frameworks/libraries used to bootstrap your p
 
 To get a local copy up and running follow these simple example steps.
 
-_Below is an example of how you can instruct your audience on installing and setting up your app. This template doesn't rely on any external dependencies or services._
-
-1. Run ```cargo run```
+1. Run ```git clone https://github.com/casab/downloader-rs```
+2. ```cd downloader-rs```
+3. Run ```cargo run```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -104,9 +101,11 @@ _Below is an example of how you can instruct your audience on installing and set
 
 More like todo...
 
+- [x] Add s3 compatible save target
+- [x] Add users
+- [ ] Add JWT authentication
 - [ ] Add jobs for downloading by creating by producing events on api calls, and move actual downloading to consumers
 - [ ] Collect metrics on downloading jobs by emitting event data for downloads
-- [x] Add s3 compatible save target
 
 
 See the [open issues](https://github.com/casab/downloader-rs/issues) for a full list of proposed features (and known issues).
@@ -147,3 +146,5 @@ Project Link: [https://github.com/casab/downloader-rs](https://github.com/casab/
 
 [Rust-lang]: https://img.shields.io/badge/rust-000000?style=for-the-badge&logo=rust&logoColor=white
 [Rust-url]: https://rust-lang.org/
+[Tokio-url]: https://tokio.rs/
+[Actix-url]: https://actix.rs/
