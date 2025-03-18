@@ -1,5 +1,6 @@
 application:
   port: 8000
+  hmac_secret: "long-and-very-secret-random-key-needed-to-verify-message-integrity"
 
 database:
   host: "localhost"
@@ -7,3 +8,5 @@ database:
   username: "postgres"
   password: "password"
   database_name: "downloader"
+
+redis_uri: "redis://localhost:6379"

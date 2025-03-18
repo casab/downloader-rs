@@ -1,4 +1,5 @@
-use actix_web::HttpRequest;
+use actix_web::http::header::LOCATION;
+use actix_web::{HttpRequest, HttpResponse};
 use serde_json::json;
 
 pub fn e500<T>(e: T) -> actix_web::Error
@@ -13,6 +14,13 @@ where
     T: std::fmt::Debug + std::fmt::Display + 'static,
 {
     json_error(actix_web::http::StatusCode::BAD_REQUEST, e)
+}
+
+pub fn e401<T>(e: T) -> actix_web::Error
+where
+    T: std::fmt::Debug + std::fmt::Display + 'static,
+{
+    json_error(actix_web::http::StatusCode::UNAUTHORIZED, e)
 }
 
 pub fn e404<T>(e: T) -> actix_web::Error
@@ -41,4 +49,10 @@ where
             .json(error_json),
     )
     .into()
+}
+
+pub fn see_other(location: &str) -> HttpResponse {
+    HttpResponse::SeeOther()
+        .insert_header((LOCATION, location))
+        .finish()
 }

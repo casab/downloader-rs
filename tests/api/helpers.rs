@@ -1,5 +1,9 @@
 #![allow(dead_code)]
 
+use argon2::{
+    password_hash::{rand_core::OsRng, SaltString},
+    Algorithm, Argon2, Params, PasswordHasher, Version,
+};
 use downloader::api::{get_connection_pool, Application};
 use downloader::configuration::{get_configuration, DatabaseSettings};
 use downloader::telemetry::{get_subscriber, init_subscriber};
@@ -24,7 +28,46 @@ pub struct TestApp {
     pub address: String,
     pub port: u16,
     pub db_pool: PgPool,
+    pub test_user: TestUser,
     pub api_client: reqwest::Client,
+}
+
+pub struct TestUser {
+    pub id: Uuid,
+    pub email: String,
+    pub password: String,
+}
+
+impl TestUser {
+    pub fn generate() -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            email: Uuid::new_v4().to_string(),
+            password: Uuid::new_v4().to_string(),
+        }
+    }
+
+    async fn store(&self, pool: &PgPool) {
+        let salt = SaltString::generate(&mut OsRng);
+        let password_hash = Argon2::new(
+            Algorithm::Argon2id,
+            Version::V0x13,
+            Params::new(15000, 2, 1, None).unwrap(),
+        )
+        .hash_password(self.password.as_bytes(), &salt)
+        .unwrap()
+        .to_string();
+        sqlx::query!(
+            "INSERT INTO users (id, email, password_hash)
+            VALUES ($1, $2, $3)",
+            self.id,
+            self.email,
+            password_hash,
+        )
+        .execute(pool)
+        .await
+        .expect("Failed to store test user.");
+    }
 }
 
 impl TestApp {}
@@ -56,6 +99,7 @@ pub async fn spawn_app() -> TestApp {
         address: format!("http://127.0.0.1:{}", application_port),
         port: application_port,
         db_pool: get_connection_pool(&configuration.database),
+        test_user: TestUser::generate(),
         api_client: client,
     };
     test_app

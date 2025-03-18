@@ -7,6 +7,7 @@ use sqlx::ConnectOptions;
 pub struct Settings {
     pub database: DatabaseSettings,
     pub application: ApplicationSettings,
+    pub redis_uri: SecretString,
     pub s3: Option<S3Settings>,
 }
 
@@ -16,6 +17,7 @@ pub struct ApplicationSettings {
     pub port: u16,
     pub host: String,
     pub base_url: String,
+    pub hmac_secret: SecretString,
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]

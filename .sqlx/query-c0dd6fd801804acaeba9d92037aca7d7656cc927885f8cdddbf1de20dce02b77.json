@@ -1,6 +1,6 @@
 {
   "db_name": "PostgreSQL",
-  "query": "SELECT * FROM downloads WHERE id = $1",
+  "query": "\n        INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) returning *;\n        ",
   "describe": {
     "columns": [
       {
@@ -10,55 +10,39 @@
       },
       {
         "ordinal": 1,
-        "name": "url",
+        "name": "email",
         "type_info": "Text"
       },
       {
         "ordinal": 2,
-        "name": "status",
+        "name": "password_hash",
         "type_info": "Text"
       },
       {
         "ordinal": 3,
-        "name": "file_path",
-        "type_info": "Text"
-      },
-      {
-        "ordinal": 4,
-        "name": "user_id",
-        "type_info": "Uuid"
-      },
-      {
-        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 4,
         "name": "updated_at",
-        "type_info": "Timestamptz"
-      },
-      {
-        "ordinal": 7,
-        "name": "completed_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Uuid"
+        "Uuid",
+        "Text",
+        "Text"
       ]
     },
     "nullable": [
       false,
       false,
       false,
-      true,
       false,
-      false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "f61276f7dcafb7f2850b19c7d5d1fb59dbb61ba6bdc16ec0bd1cde1e4eb2160b"
+  "hash": "c0dd6fd801804acaeba9d92037aca7d7656cc927885f8cdddbf1de20dce02b77"
 }

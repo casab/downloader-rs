@@ -8,12 +8,13 @@ async fn create_test_download(pool: &PgPool) -> Download {
     sqlx::query_as!(
         Download,
         r#"
-        INSERT INTO downloads (url, status, created_at, updated_at)
-        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, url, status as "status: DownloadStatus", file_path, created_at, updated_at, completed_at
+        INSERT INTO downloads (url, status, user_id, created_at, updated_at)
+        VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        RETURNING id, url, user_id, status as "status: DownloadStatus", file_path, created_at, updated_at, completed_at
         "#,
         "https://example.com/test.zip",
-        "PENDING"
+        "PENDING",
+        uuid::Uuid::new_v4()
     )
     .fetch_one(pool)
     .await

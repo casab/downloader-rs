@@ -1,12 +1,12 @@
 {
   "db_name": "PostgreSQL",
-  "query": "\n        INSERT INTO downloads (url, status, created_at, updated_at)\n        VALUES ($1, $2, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)\n        RETURNING id, url, status as \"status: DownloadStatus\", file_path, created_at, updated_at, completed_at\n        ",
+  "query": "SELECT * FROM downloads WHERE user_id = $1",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
         "name": "id",
-        "type_info": "Int8"
+        "type_info": "Uuid"
       },
       {
         "ordinal": 1,
@@ -15,7 +15,7 @@
       },
       {
         "ordinal": 2,
-        "name": "status: DownloadStatus",
+        "name": "status",
         "type_info": "Text"
       },
       {
@@ -25,24 +25,28 @@
       },
       {
         "ordinal": 4,
+        "name": "user_id",
+        "type_info": "Uuid"
+      },
+      {
+        "ordinal": 5,
         "name": "created_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 5,
+        "ordinal": 6,
         "name": "updated_at",
         "type_info": "Timestamptz"
       },
       {
-        "ordinal": 6,
+        "ordinal": 7,
         "name": "completed_at",
         "type_info": "Timestamptz"
       }
     ],
     "parameters": {
       "Left": [
-        "Text",
-        "Text"
+        "Uuid"
       ]
     },
     "nullable": [
@@ -52,8 +56,9 @@
       true,
       false,
       false,
+      false,
       true
     ]
   },
-  "hash": "eaf0cee5696a66f1de40d3d2d8a172ccaa7e99c90b29f95899433c8816d30d8c"
+  "hash": "581621294b7ab9d839b9115701136ceac33b98a58d84148cd7150b89a31cc675"
 }
