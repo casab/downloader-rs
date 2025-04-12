@@ -2,17 +2,16 @@ use crate::clients::get_s3_client;
 use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
 use crate::middlewares::reject_anonymous_users;
 use crate::routes::{download, get_download, get_downloads, health_check, login, register};
-use actix_web::cookie::Key;
-use actix_web::middleware::from_fn;
-
 use crate::utils::error_handler;
-use actix_session::storage::RedisSessionStore;
-use actix_session::SessionMiddleware;
-use actix_web::dev::Server;
-use actix_web::{web, App, HttpServer};
+use actix_session::{storage::RedisSessionStore, SessionMiddleware};
+use actix_web::{
+    cookie::Key,
+    dev::Server,
+    middleware::{from_fn, NormalizePath},
+    web, App, HttpServer,
+};
 use secrecy::{ExposeSecret, SecretString};
-use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::{postgres::PgPoolOptions, PgPool};
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
@@ -81,6 +80,7 @@ async fn run(
 
     let server = HttpServer::new(move || {
         App::new()
+            .wrap(NormalizePath::trim())
             .wrap(SessionMiddleware::new(
                 redis_store.clone(),
                 secret_key.clone(),

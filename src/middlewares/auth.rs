@@ -76,10 +76,9 @@ async fn validate_jwt(
     auth_header: &HeaderValue,
     config: &JwtSettings,
 ) -> Result<UserId, actix_web::Error> {
+    let auth_type_prefix = "Bearer ";
     if let Ok(auth_str) = auth_header.to_str() {
-        if auth_str.starts_with("Bearer ") {
-            let token = auth_str[7..].trim();
-
+        if let Some(token) = auth_str.strip_prefix(auth_type_prefix) {
             match decode::<Claims>(
                 token,
                 &DecodingKey::from_secret(config.secret.expose_secret().as_bytes()),
@@ -98,9 +97,7 @@ async fn validate_jwt(
 
 async fn validate_session(session: &TypedSession) -> Result<UserId, actix_web::Error> {
     match session.get_user_id().map_err(e500)? {
-        Some(user_id) => {
-            return Ok(UserId(user_id));
-        }
+        Some(user_id) => Ok(UserId(user_id)),
         None => Err(e401("The user has not logged in")),
     }
 }
