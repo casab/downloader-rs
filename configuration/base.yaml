@@ -1,6 +1,9 @@
 application:
   port: 8000
   hmac_secret: "long-and-very-secret-random-key-needed-to-verify-message-integrity"
+  jwt:
+    secret: "another-long-and-very-secret-random-key-for-jwt"
+    expiration_hours: 7
 
 database:
   host: "localhost"

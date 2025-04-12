@@ -1,3 +1,5 @@
+use crate::configuration::JwtSettings;
+use crate::middlewares::auth::create_jwt_token;
 use crate::repository::{create_user, get_stored_credentials};
 use crate::session_state::TypedSession;
 use crate::telemetry::spawn_blocking_with_tracing;
@@ -18,6 +20,7 @@ pub struct Credentials {
 #[derive(Serialize)]
 pub struct AuthResponse {
     user_id: uuid::Uuid,
+    jwt: String,
 }
 
 #[tracing::instrument(
@@ -27,6 +30,7 @@ pub struct AuthResponse {
 pub async fn login(
     login_data: web::Json<Credentials>,
     pool: web::Data<PgPool>,
+    jwt_settings: web::Data<JwtSettings>,
     session: TypedSession,
 ) -> Result<HttpResponse, actix_web::Error> {
     let credentials = Credentials {
@@ -39,7 +43,8 @@ pub async fn login(
             tracing::Span::current().record("user_id", tracing::field::display(&user_id));
             session.renew();
             session.insert_user_id(user_id).map_err(e401)?;
-            Ok(HttpResponse::Ok().json(AuthResponse { user_id }))
+            let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
+            Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
         }
         Err(e) => Err(e401(e)),
     }
@@ -52,6 +57,7 @@ pub async fn login(
 pub async fn register(
     register_data: web::Json<Credentials>,
     pool: web::Data<PgPool>,
+    jwt_settings: web::Data<JwtSettings>,
     session: TypedSession,
 ) -> Result<HttpResponse, actix_web::Error> {
     let credentials = Credentials {
@@ -64,7 +70,8 @@ pub async fn register(
             tracing::Span::current().record("user_id", tracing::field::display(&user_id));
             session.renew();
             session.insert_user_id(user_id).map_err(e401)?;
-            Ok(HttpResponse::Ok().json(AuthResponse { user_id }))
+            let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
+            Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
         }
         Err(e) => Err(e500(e)),
     }

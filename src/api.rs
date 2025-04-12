@@ -1,5 +1,5 @@
 use crate::clients::get_s3_client;
-use crate::configuration::{DatabaseSettings, S3Settings, Settings};
+use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
 use crate::middlewares::reject_anonymous_users;
 use crate::routes::{download, get_download, get_downloads, health_check, login, register};
 use actix_web::cookie::Key;
@@ -36,6 +36,7 @@ impl Application {
             connection_pool,
             configuration.application.base_url,
             configuration.application.hmac_secret,
+            configuration.application.jwt,
             configuration.redis_uri,
             configuration.s3,
         )
@@ -62,10 +63,12 @@ async fn run(
     db_pool: PgPool,
     base_url: String,
     hmac_secret: SecretString,
+    jwt_settings: JwtSettings,
     redis_uri: SecretString,
     s3_settings: Option<S3Settings>,
 ) -> Result<Server, anyhow::Error> {
     let secret_key = Key::from(hmac_secret.expose_secret().as_bytes());
+    let jwt_settings = web::Data::new(jwt_settings);
 
     let db_pool = web::Data::new(db_pool);
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
@@ -101,6 +104,7 @@ async fn run(
             .app_data(db_pool.clone())
             .app_data(s3_client.clone())
             .app_data(base_url.clone())
+            .app_data(jwt_settings.clone())
             .app_data(web::JsonConfig::default().error_handler(error_handler))
             .app_data(web::PathConfig::default().error_handler(error_handler))
             .app_data(web::QueryConfig::default().error_handler(error_handler))

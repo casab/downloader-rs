@@ -18,6 +18,7 @@ pub struct ApplicationSettings {
     pub host: String,
     pub base_url: String,
     pub hmac_secret: SecretString,
+    pub jwt: JwtSettings,
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
@@ -36,6 +37,12 @@ pub struct S3Settings {
     pub bucket_name: String,
     pub region: String,
     pub endpoint: Option<String>,
+}
+
+#[derive(serde::Deserialize, Clone, Debug)]
+pub struct JwtSettings {
+    pub secret: SecretString,
+    pub expiration_hours: i64,
 }
 
 impl DatabaseSettings {
