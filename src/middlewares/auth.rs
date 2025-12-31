@@ -77,18 +77,18 @@ async fn validate_jwt(
     config: &JwtSettings,
 ) -> Result<UserId, actix_web::Error> {
     let auth_type_prefix = "Bearer ";
-    if let Ok(auth_str) = auth_header.to_str() {
-        if let Some(token) = auth_str.strip_prefix(auth_type_prefix) {
-            match decode::<Claims>(
-                token,
-                &DecodingKey::from_secret(config.secret.expose_secret().as_bytes()),
-                &Validation::default(),
-            ) {
-                Ok(token_data) => {
-                    return Ok(UserId(token_data.claims.sub));
-                }
-                Err(e) => return Err(e401(e)),
+    if let Ok(auth_str) = auth_header.to_str()
+        && let Some(token) = auth_str.strip_prefix(auth_type_prefix)
+    {
+        match decode::<Claims>(
+            token,
+            &DecodingKey::from_secret(config.secret.expose_secret().as_bytes()),
+            &Validation::default(),
+        ) {
+            Ok(token_data) => {
+                return Ok(UserId(token_data.claims.sub));
             }
+            Err(e) => return Err(e401(e)),
         }
     }
 
