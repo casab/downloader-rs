@@ -1,4 +1,4 @@
-use crate::helpers::{spawn_app, TestUser};
+use crate::helpers::{TestUser, spawn_app};
 use downloader::models::{Download, DownloadStatus};
 use sqlx::PgPool;
 use wiremock::matchers::{method, path};

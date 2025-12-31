@@ -1,8 +1,8 @@
 use crate::utils::errors::AuthError;
 use anyhow::Context;
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Algorithm, Argon2, Params, PasswordHash, PasswordHasher, PasswordVerifier, Version,
+    password_hash::{SaltString, rand_core::OsRng},
 };
 use secrecy::{ExposeSecret, SecretString};
 

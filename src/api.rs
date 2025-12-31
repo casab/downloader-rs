@@ -3,15 +3,16 @@ use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
 use crate::middlewares::reject_anonymous_users;
 use crate::routes::{download, get_download, get_downloads, health_check, login, register};
 use crate::utils::error_handler;
-use actix_session::{storage::RedisSessionStore, SessionMiddleware};
+use actix_session::{SessionMiddleware, storage::RedisSessionStore};
 use actix_web::{
+    App, HttpServer,
     cookie::Key,
     dev::Server,
-    middleware::{from_fn, NormalizePath},
-    web, App, HttpServer,
+    middleware::{NormalizePath, from_fn},
+    web,
 };
 use secrecy::{ExposeSecret, SecretString};
-use sqlx::{postgres::PgPoolOptions, PgPool};
+use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::net::TcpListener;
 use tracing_actix_web::TracingLogger;
 
@@ -91,14 +92,14 @@ async fn run(
                     // Public routes (no auth required)
                     .route("/auth", web::post().to(login))
                     .route("/register", web::post().to(register))
+                    .route("/health_check", web::get().to(health_check))
                     // Protected routes (auth required)
                     .service(
                         web::scope("")
                             .wrap(from_fn(reject_anonymous_users))
                             .route("/download_file", web::get().to(download))
                             .route("/downloads/{id}", web::get().to(get_download))
-                            .route("/downloads", web::get().to(get_downloads))
-                            .route("/health_check", web::get().to(health_check)),
+                            .route("/downloads", web::get().to(get_downloads)),
                     ),
             )
             .app_data(db_pool.clone())

@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug app (-a) + bunyan tail",
+      "type": "lldb",
+      "request": "launch",
+      "cargo": {
+        "args": ["build"],
+        "filter": { "kind": "bin" }
+      },
+      "args": ["-a"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "RUST_BACKTRACE": "1"
+      },
+      "stdio": [null, "${workspaceFolder}/.vscode/bunyan.log", null],
+      "preLaunchTask": "bunyan: tail log"
+    }
+  ]
+}

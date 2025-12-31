@@ -64,8 +64,6 @@
             "extensions": [
                 "davidanson.vscode-markdownlint",
                 "mrmlnc.vscode-duplicate",
-                "visualstudioexptteam.vscodeintellicode",
-                "visualstudioexptteam.intellicode-api-usage-examples",
                 "fill-labs.dependi",
                 "timonwong.shellcheck",
                 "tamasfe.even-better-toml",

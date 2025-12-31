@@ -1,14 +1,14 @@
 use crate::configuration::JwtSettings;
 use crate::session_state::TypedSession;
 use crate::utils::{e401, e500};
+use actix_web::FromRequest;
+use actix_web::HttpMessage;
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::http::header::HeaderValue;
 use actix_web::middleware::Next;
 use actix_web::web::Data;
-use actix_web::FromRequest;
-use actix_web::HttpMessage;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
+use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;

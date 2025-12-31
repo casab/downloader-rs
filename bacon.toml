@@ -6,52 +6,52 @@
 #   https://github.com/Canop/bacon/blob/main/defaults/default-bacon.toml
 
 default_job = "check"
-env.CARGO_TERM_COLOR = "auto"
+env.CARGO_TERM_COLOR = "always"
+
+[jobs]
+
+# This alternative to 'check' demonstrates the use of the JSON output
+# of cargo check - see https://github.com/Canop/bacon/issues/249
+[jobs.json-check]
+command = [
+	"cargo",
+	"check",
+	"--message-format",
+	"json-diagnostic-rendered-ansi",
+]
+need_stdout = true
+analyzer = "cargo_json"
 
 [jobs.check]
 command = ["cargo", "check"]
+need_stdout = false
+
+[jobs.check-windows]
+command = ["cross", "build", "--target", "x86_64-pc-windows-gnu"]
+
+[jobs.check-nightly]
+command = ["cargo", "+nightly", "check", "--all-targets"]
 need_stdout = false
 
 [jobs.check-all]
 command = ["cargo", "check", "--all-targets"]
 need_stdout = false
 
-# Run clippy on the default target
-[jobs.clippy]
-command = ["cargo", "clippy"]
+[jobs.fmt]
+command = ["cargo", "+nightly", "fmt"]
+
+[jobs.nightly]
+command = ["cargo", "+nightly", "check", "--all-targets"]
 need_stdout = false
 
-# Run clippy on all targets
-# To disable some lints, you may change the job this way:
-#    [jobs.clippy-all]
-#    command = [
-#        "cargo", "clippy",
-#        "--all-targets",
-#    	 "--",
-#    	 "-A", "clippy::bool_to_int_with_if",
-#    	 "-A", "clippy::collapsible_if",
-#    	 "-A", "clippy::derive_partial_eq_without_eq",
-#    ]
-# need_stdout = false
-[jobs.clippy-all]
-command = ["cargo", "clippy", "--all-targets"]
-need_stdout = false
+[jobs.win]
+command = ["cross", "build", "--target", "x86_64-pc-windows-gnu"]
 
-# This job lets you run
-# - all tests: bacon test
-# - a specific test: bacon test -- config::test_default_files
-# - the tests of a package: bacon test -- -- -p config
 [jobs.test]
 command = ["cargo", "test"]
 need_stdout = true
-
-[jobs.nextest]
-command = [
-    "cargo", "nextest", "run",
-    "--hide-progress-bar", "--failure-output", "final"
-]
-need_stdout = true
-analyzer = "nextest"
+on_success = "play-sound(name=90s-game-ui-6,volume=50)"
+on_failure = "play-sound(name=beep-warning,volume=100)"
 
 [jobs.doc]
 command = ["cargo", "doc", "--no-deps"]
@@ -62,17 +62,70 @@ need_stdout = false
 [jobs.doc-open]
 command = ["cargo", "doc", "--no-deps", "--open"]
 need_stdout = false
-on_success = "back" # so that we don't open the browser at each change
+on_success = "back"                               # so that we don't open the browser at each change
 
-# You can run your application and have the result displayed in bacon,
-# if it makes sense for this crate.
-[jobs.run]
+[jobs.clippy-all]
 command = [
-    "cargo", "run",
-    # put launch parameters for your program behind a `--` separator
+	"cargo",
+	"clippy",
+	"--",
+	"-A",
+	"clippy::bool_to_int_with_if",
+	"-A",
+	"clippy::collapsible_else_if",
+	"-A",
+	"clippy::collapsible_if",
+	"-A",
+	"clippy::derive_partial_eq_without_eq",
+	"-A",
+	"clippy::get_first",
+	"-A",
+	"clippy::if_same_then_else",
+	"-A",
+	"clippy::len_without_is_empty",
+	"-A",
+	"clippy::map_entry",
+	"-A",
+	"clippy::while_let_on_iterator",
+	"-A",
+	"clippy::new_without_default",
 ]
-need_stdout = true
-allow_warnings = true
+need_stdout = false
+
+# Pedantic job refined for bacon's source code.
+# 
+# The goal of the Allow here isn't to have a warning free code
+# (a pedantic session can still dismiss items) but to exclude
+# the lints which are, for this project, considered as bad.
+[jobs.pedantic]
+command = [
+	"cargo",
+	"clippy",
+	"--",
+	"-W",
+	"clippy::pedantic",
+	"-A",
+	"clippy::struct_excessive_bools",
+	"-A",
+	"clippy::default_trait_access",
+	"-A",
+	"clippy::must_use_candidate",
+	"-A",
+	"clippy::return_self_not_must_use",
+	"-A",
+	"clippy::get_first",
+	"-A",
+	"clippy::len_without_is_empty",
+	"-A",
+	"clippy::collapsible_else_if",
+	"-A",
+	"clippy::collapsible_if",
+	"-A",
+	"clippy::new_without_default",
+	"-A",
+	"clippy::if_not_else",
+]
+need_stdout = false
 background = true
 
 # Run your long-running application (eg server) and have the result displayed in bacon.
@@ -85,8 +138,11 @@ background = true
 # a binding `r = job:run-long` at the end of this file .
 [jobs.run-long]
 command = [
-    "cargo", "run", "--", "-a"
-    # put launch parameters for your program behind a `--` separator
+	"cargo",
+	"run",
+	"--",
+	"-a",
+	# put launch parameters for your program behind a `--` separator
 ]
 need_stdout = true
 allow_warnings = true
@@ -103,10 +159,21 @@ need_stdout = true
 allow_warnings = true
 
 
+[skin]
+change_badge_bg = 5
+
 # You may define here keybindings that would be specific to
 # a project, for example a shortcut to launch a specific job.
 # Shortcuts to internal functions (scrolling, toggling, etc.)
 # should go in your personal global prefs.toml file instead.
 [keybindings]
-# alt-m = "job:my-job"
-c = "job:clippy-all" # comment this to have 'c' run clippy on only the default target
+c = "job:clippy-all"
+ctrl-c = "copy-unstyled-output"
+#n = "next-match"
+#shift-n = "previous-match"
+#h = "play-sound(name=car-horn)"
+#b = "play-sound(name=beep-6)"
+f = "job:fmt"
+w = "job:win"
+alt-b = "toggle-backtrace(0)" # disable backtrace when set with env var
+cmd-e = "play-sound"

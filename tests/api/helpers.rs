@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 
 use argon2::{
-    password_hash::{rand_core::OsRng, SaltString},
     Algorithm, Argon2, Params, PasswordHasher, Version,
+    password_hash::{SaltString, rand_core::OsRng},
 };
-use downloader::api::{get_connection_pool, Application};
-use downloader::configuration::{get_configuration, DatabaseSettings};
+use downloader::api::{Application, get_connection_pool};
+use downloader::configuration::{DatabaseSettings, get_configuration};
 use downloader::telemetry::{get_subscriber, init_subscriber};
 use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};

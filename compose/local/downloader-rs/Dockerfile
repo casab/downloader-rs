@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.84.0 AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.92.0 AS chef
 
 ARG APP_HOME=/app
 

@@ -5,7 +5,7 @@ use crate::repository::{
     create_download, get_all_downloads, get_download_by_id, update_download_status,
 };
 use crate::utils::{download_file, e404, e500};
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 
 #[derive(serde::Deserialize)]

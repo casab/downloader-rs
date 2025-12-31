@@ -4,7 +4,7 @@ use crate::repository::{create_user, get_stored_credentials};
 use crate::session_state::TypedSession;
 use crate::telemetry::spawn_blocking_with_tracing;
 use crate::utils::{e401, e500, errors::AuthError, verify_password_hash};
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 
 use anyhow::{Context, Result};
 use secrecy::SecretString;
