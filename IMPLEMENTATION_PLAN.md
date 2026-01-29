@@ -9,13 +9,82 @@ This document outlines a comprehensive 16-week development roadmap for enhancing
 2. API Enhancements (Pagination, Filtering, Sorting)
 3. User Management (Profile, Password Reset, Email Verification)
 4. Download Management (Progress, Pause/Resume, Retry)
-5. Background Jobs (Queue System)
+5. Background Jobs (Redis Streams Queue System)
 6. File Organization (Folders, Tags, Search)
 7. Storage Options (Multi-provider Support)
 8. Rate Limiting (Per-user Limits, Throttling)
-9. Monitoring (Prometheus, Health Checks)
+9. Monitoring (OpenTelemetry, Prometheus, Kafka Events)
 10. Admin Features (User Management, Audit Logs)
 11. Notifications (Webhooks, Email)
+
+---
+
+## Architectural Decisions
+
+This section documents key architectural choices and their rationale.
+
+### ADR-001: Redis Streams for Job Queue
+
+**Decision:** Use Redis Streams as the primary job queue backend instead of PostgreSQL.
+
+**Context:** The system needs a reliable, high-performance job queue for processing downloads asynchronously.
+
+**Rationale:**
+| Aspect | Redis Streams | PostgreSQL |
+|--------|---------------|------------|
+| Latency | Sub-millisecond | 1-10ms |
+| Throughput | 100k+ ops/sec | Lower (disk I/O) |
+| Queue primitives | Native (XADD, XREADGROUP) | Requires `SKIP LOCKED` |
+| Already in stack | Yes (sessions) | Yes |
+| Consumer groups | Built-in | Manual implementation |
+
+**Approach:** Hybrid architecture
+- **Redis Streams**: Active job queue (fast enqueue/dequeue)
+- **PostgreSQL**: Job history, audit trail, analytics
+
+**Consequences:**
+- Faster job processing
+- Need to handle Redis persistence (RDB/AOF)
+- Job history queries go to PostgreSQL
+
+---
+
+### ADR-002: Kafka + OpenTelemetry for Observability
+
+**Decision:** Use OpenTelemetry for telemetry collection with Kafka as an event bus for system events.
+
+**Context:** The system needs comprehensive observability (metrics, traces, logs) and the ability to publish domain events for analytics and integrations.
+
+**Rationale:**
+- **OpenTelemetry**: Industry standard, vendor-neutral, unified API for traces/metrics/logs
+- **Kafka**: Durable event streaming, replay capability, multiple consumers
+- **tracing integration**: Single instrumentation point, emit to multiple backends
+
+**Architecture:**
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│   Application   │────▶│  OpenTelemetry   │────▶│  OTel Collector │
+│   (tracing)     │     │     Exporter     │     │                 │
+└─────────────────┘     └──────────────────┘     └────────┬────────┘
+                                                          │
+                    ┌─────────────────────────────────────┼─────────────────────────────┐
+                    ▼                                     ▼                             ▼
+              ┌──────────┐                         ┌──────────────┐              ┌──────────┐
+              │  Kafka   │                         │  Prometheus  │              │  Jaeger  │
+              │ (events) │                         │  (metrics)   │              │ (traces) │
+              └──────────┘                         └──────────────┘              └──────────┘
+```
+
+**Event Types Published to Kafka:**
+- `download.started`, `download.completed`, `download.failed`
+- `user.registered`, `user.login`, `user.password_changed`
+- `job.enqueued`, `job.started`, `job.completed`, `job.failed`
+
+**Consequences:**
+- Unified telemetry with tracing crate
+- Kafka adds operational complexity
+- Enables future event-driven features
+- Analytics pipelines can consume events
 
 ---
 
@@ -750,204 +819,633 @@ impl RetryPolicy {
 
 ---
 
-## Phase 5: Background Jobs (Weeks 9-10)
+## Phase 5: Background Jobs with Redis Streams (Weeks 9-10)
 
-### Week 9: Job Queue Infrastructure
+### Week 9: Redis Streams Job Queue Infrastructure
 
 #### Goals
-- Implement job queue system
-- Create worker pool architecture
-- Add job persistence and recovery
+- Implement Redis Streams-based job queue
+- Create worker pool with consumer groups
+- Add PostgreSQL for job history/audit
 
 #### Tasks
 
-##### Day 1-2: Queue Infrastructure
+##### Day 1-2: Redis Streams Setup
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Evaluate queue backends | Redis vs PostgreSQL | Research |
-| Create `jobs` table | Job persistence | Migration |
-| Implement job serialization | Store job payloads | Unit tests |
-| Create queue abstraction | `JobQueue` trait | Unit tests |
+| Add `redis` crate with streams support | Cargo.toml update | N/A |
+| Create Redis connection pool | Shared Redis client | Unit tests |
+| Implement stream initialization | Create streams on startup | Integration tests |
+| Create consumer group | `XGROUP CREATE` on startup | Integration tests |
 
-**Jobs table migration:**
-```sql
--- migrations/YYYYMMDDHHMMSS_create_jobs_table.up.sql
-CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed', 'cancelled');
-CREATE TYPE job_type AS ENUM ('download', 'email', 'cleanup', 'notification');
-
-CREATE TABLE jobs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    job_type job_type NOT NULL,
-    status job_status NOT NULL DEFAULT 'pending',
-    payload JSONB NOT NULL,
-    result JSONB,
-    priority INTEGER NOT NULL DEFAULT 0,
-    attempts INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 3,
-    scheduled_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    started_at TIMESTAMP WITH TIME ZONE,
-    completed_at TIMESTAMP WITH TIME ZONE,
-    failed_at TIMESTAMP WITH TIME ZONE,
-    error_message TEXT,
-    worker_id TEXT,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX idx_jobs_status_scheduled ON jobs(status, scheduled_at)
-    WHERE status = 'pending';
-CREATE INDEX idx_jobs_worker_id ON jobs(worker_id) WHERE status = 'running';
+**Dependencies:**
+```toml
+# Cargo.toml
+[dependencies]
+redis = { version = "0.25", features = ["tokio-comp", "streams"] }
 ```
 
-**Job queue trait:**
+**Redis Streams configuration:**
+```yaml
+# configuration/base.yaml
+queue:
+  backend: "redis_streams"
+
+  redis_streams:
+    url: "redis://localhost:6379"
+    stream_prefix: "jobs"           # jobs:download, jobs:email, etc.
+    consumer_group: "workers"
+    consumer_name_prefix: "worker"
+    block_ms: 5000                  # Block timeout for XREADGROUP
+    max_retries: 3
+    retry_delay_ms: 5000
+    pending_timeout_ms: 300000      # 5 minutes - reclaim dead consumer jobs
+
+  # PostgreSQL for job history
+  history:
+    enabled: true
+    retention_days: 90
+```
+
+**Stream initialization:**
 ```rust
-// src/jobs/queue.rs
-#[async_trait]
-pub trait JobQueue: Send + Sync {
-    async fn enqueue(&self, job: Job) -> Result<Uuid>;
-    async fn dequeue(&self, worker_id: &str) -> Result<Option<Job>>;
-    async fn complete(&self, job_id: Uuid, result: JobResult) -> Result<()>;
-    async fn fail(&self, job_id: Uuid, error: &str) -> Result<()>;
-    async fn retry(&self, job_id: Uuid) -> Result<()>;
-    async fn get_status(&self, job_id: Uuid) -> Result<JobStatus>;
+// src/jobs/redis_queue.rs
+pub struct RedisStreamsQueue {
+    client: redis::Client,
+    config: RedisStreamsConfig,
+}
+
+impl RedisStreamsQueue {
+    pub async fn initialize(&self) -> Result<()> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+
+        // Create streams and consumer groups for each job type
+        for job_type in JobType::all() {
+            let stream_key = format!("{}:{}", self.config.stream_prefix, job_type);
+
+            // Create consumer group (MKSTREAM creates stream if not exists)
+            let result: RedisResult<()> = redis::cmd("XGROUP")
+                .arg("CREATE")
+                .arg(&stream_key)
+                .arg(&self.config.consumer_group)
+                .arg("0")
+                .arg("MKSTREAM")
+                .query_async(&mut conn)
+                .await;
+
+            match result {
+                Ok(_) => tracing::info!("Created consumer group for {}", stream_key),
+                Err(e) if e.to_string().contains("BUSYGROUP") => {
+                    tracing::debug!("Consumer group already exists for {}", stream_key);
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(())
+    }
 }
 ```
 
-##### Day 3-4: Worker Pool
+##### Day 3-4: Job Queue Implementation
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Create `Worker` struct | Job execution unit | Unit tests |
-| Implement worker pool | Manage multiple workers | Integration tests |
-| Add graceful shutdown | Complete running jobs | Integration tests |
-| Worker heartbeat | Detect dead workers | Integration tests |
+| Implement `enqueue` with XADD | Add jobs to stream | Unit tests |
+| Implement `dequeue` with XREADGROUP | Consumer group reading | Integration tests |
+| Implement `acknowledge` with XACK | Mark job complete | Integration tests |
+| Implement pending message recovery | XPENDING + XCLAIM | Integration tests |
 
-**Worker implementation:**
+**Redis Streams job queue trait implementation:**
+```rust
+// src/jobs/redis_queue.rs
+use redis::streams::{StreamReadOptions, StreamReadReply};
+
+#[async_trait]
+impl JobQueue for RedisStreamsQueue {
+    async fn enqueue(&self, job: Job) -> Result<String> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+        let stream_key = format!("{}:{}", self.config.stream_prefix, job.job_type);
+
+        // Serialize job to fields
+        let payload = serde_json::to_string(&job.payload)?;
+
+        // XADD with auto-generated ID
+        let message_id: String = redis::cmd("XADD")
+            .arg(&stream_key)
+            .arg("*")  // Auto-generate ID
+            .arg("id").arg(job.id.to_string())
+            .arg("type").arg(job.job_type.as_str())
+            .arg("payload").arg(&payload)
+            .arg("priority").arg(job.priority)
+            .arg("created_at").arg(Utc::now().timestamp_millis())
+            .query_async(&mut conn)
+            .await?;
+
+        // Also record in PostgreSQL for history
+        if self.config.history.enabled {
+            self.record_job_history(&job, &message_id).await?;
+        }
+
+        Ok(message_id)
+    }
+
+    async fn dequeue(&self, worker_id: &str) -> Result<Option<Job>> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+
+        // First, try to claim any pending messages from dead consumers
+        if let Some(job) = self.claim_pending_job(&mut conn, worker_id).await? {
+            return Ok(Some(job));
+        }
+
+        // Read new messages with XREADGROUP
+        let streams: Vec<String> = JobType::all()
+            .iter()
+            .map(|jt| format!("{}:{}", self.config.stream_prefix, jt))
+            .collect();
+
+        let opts = StreamReadOptions::default()
+            .group(&self.config.consumer_group, worker_id)
+            .block(self.config.block_ms)
+            .count(1);
+
+        let result: StreamReadReply = conn.xread_options(&streams, &[">"; streams.len()], &opts).await?;
+
+        // Parse first message if any
+        if let Some(stream_key) = result.keys.first() {
+            if let Some(message) = stream_key.ids.first() {
+                return Ok(Some(self.parse_job(message)?));
+            }
+        }
+
+        Ok(None)
+    }
+
+    async fn acknowledge(&self, stream_key: &str, message_id: &str) -> Result<()> {
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+
+        // XACK to acknowledge processing
+        redis::cmd("XACK")
+            .arg(stream_key)
+            .arg(&self.config.consumer_group)
+            .arg(message_id)
+            .query_async(&mut conn)
+            .await?;
+
+        // XDEL to remove from stream (optional, keeps stream small)
+        redis::cmd("XDEL")
+            .arg(stream_key)
+            .arg(message_id)
+            .query_async(&mut conn)
+            .await?;
+
+        Ok(())
+    }
+
+    async fn fail(&self, stream_key: &str, message_id: &str, error: &str) -> Result<()> {
+        // Move to dead letter stream after max retries
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
+
+        let dead_letter_key = format!("{}:dead_letter", self.config.stream_prefix);
+
+        // Add to dead letter stream with error info
+        redis::cmd("XADD")
+            .arg(&dead_letter_key)
+            .arg("*")
+            .arg("original_stream").arg(stream_key)
+            .arg("original_id").arg(message_id)
+            .arg("error").arg(error)
+            .arg("failed_at").arg(Utc::now().timestamp_millis())
+            .query_async(&mut conn)
+            .await?;
+
+        // Acknowledge original message
+        self.acknowledge(stream_key, message_id).await?;
+
+        Ok(())
+    }
+}
+
+impl RedisStreamsQueue {
+    /// Claim pending messages from consumers that have been idle too long
+    async fn claim_pending_job(
+        &self,
+        conn: &mut redis::aio::MultiplexedConnection,
+        worker_id: &str,
+    ) -> Result<Option<Job>> {
+        for job_type in JobType::all() {
+            let stream_key = format!("{}:{}", self.config.stream_prefix, job_type);
+
+            // XPENDING to find stuck messages
+            let pending: Vec<(String, String, i64, i64)> = redis::cmd("XPENDING")
+                .arg(&stream_key)
+                .arg(&self.config.consumer_group)
+                .arg("-")
+                .arg("+")
+                .arg(1)
+                .query_async(conn)
+                .await?;
+
+            if let Some((message_id, _consumer, idle_time, _delivery_count)) = pending.first() {
+                if *idle_time > self.config.pending_timeout_ms as i64 {
+                    // XCLAIM to take ownership
+                    let claimed: Vec<StreamId> = redis::cmd("XCLAIM")
+                        .arg(&stream_key)
+                        .arg(&self.config.consumer_group)
+                        .arg(worker_id)
+                        .arg(self.config.pending_timeout_ms)
+                        .arg(message_id)
+                        .query_async(conn)
+                        .await?;
+
+                    if let Some(message) = claimed.first() {
+                        tracing::warn!(
+                            "Claimed pending message {} from dead consumer",
+                            message_id
+                        );
+                        return Ok(Some(self.parse_job(message)?));
+                    }
+                }
+            }
+        }
+        Ok(None)
+    }
+}
+```
+
+##### Day 5: Job History in PostgreSQL
+| Task | Description | Tests Required |
+|------|-------------|----------------|
+| Create `job_history` table | Audit and analytics | Migration |
+| Record job lifecycle events | Start, complete, fail | Integration tests |
+| Query endpoints for history | Filter, paginate | Integration tests |
+
+**Job history migration (PostgreSQL):**
+```sql
+-- migrations/YYYYMMDDHHMMSS_create_job_history_table.up.sql
+CREATE TYPE job_status AS ENUM ('pending', 'running', 'completed', 'failed', 'cancelled');
+CREATE TYPE job_type AS ENUM ('download', 'email', 'cleanup', 'notification', 'webhook');
+
+CREATE TABLE job_history (
+    id UUID PRIMARY KEY,
+    stream_message_id TEXT,         -- Redis stream message ID
+    job_type job_type NOT NULL,
+    status job_status NOT NULL,
+    payload JSONB NOT NULL,
+    result JSONB,
+    error_message TEXT,
+    priority INTEGER NOT NULL DEFAULT 0,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    worker_id TEXT,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    started_at TIMESTAMP WITH TIME ZONE,
+    completed_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE INDEX idx_job_history_user_id ON job_history(user_id);
+CREATE INDEX idx_job_history_status ON job_history(status);
+CREATE INDEX idx_job_history_type ON job_history(job_type);
+CREATE INDEX idx_job_history_created_at ON job_history(created_at DESC);
+
+-- Partition by month for efficient cleanup
+-- (Consider using pg_partman for automatic partition management)
+```
+
+#### Test Requirements - Week 9
+```rust
+#[tokio::test]
+async fn redis_streams_enqueue_adds_to_stream() { }
+
+#[tokio::test]
+async fn consumer_group_distributes_jobs() { }
+
+#[tokio::test]
+async fn xack_removes_from_pending() { }
+
+#[tokio::test]
+async fn dead_consumer_jobs_are_claimed() { }
+
+#[tokio::test]
+async fn failed_jobs_go_to_dead_letter() { }
+
+#[tokio::test]
+async fn job_history_records_lifecycle() { }
+```
+
+---
+
+### Week 10: Worker Pool & Download Integration
+
+#### Goals
+- Implement robust worker pool with consumer groups
+- Integrate downloads with Redis Streams queue
+- Add real-time progress via Redis Pub/Sub
+
+#### Tasks
+
+##### Day 1-2: Worker Pool with Consumer Groups
+| Task | Description | Tests Required |
+|------|-------------|----------------|
+| Create `WorkerPool` manager | Spawn/manage workers | Unit tests |
+| Implement worker with XREADGROUP | Block on multiple streams | Integration tests |
+| Add graceful shutdown | SIGTERM handling | Integration tests |
+| Worker health monitoring | Heartbeat mechanism | Integration tests |
+
+**Worker pool implementation:**
 ```rust
 // src/jobs/worker.rs
+pub struct WorkerPool {
+    workers: Vec<JoinHandle<()>>,
+    shutdown: Arc<AtomicBool>,
+    config: WorkerPoolConfig,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct WorkerPoolConfig {
+    pub num_workers: usize,
+    pub worker_name_prefix: String,
+}
+
+impl WorkerPool {
+    pub async fn start(
+        config: WorkerPoolConfig,
+        queue: Arc<RedisStreamsQueue>,
+        handlers: Arc<JobHandlers>,
+    ) -> Self {
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let mut workers = Vec::with_capacity(config.num_workers);
+
+        for i in 0..config.num_workers {
+            let worker_id = format!("{}-{}", config.worker_name_prefix, i);
+            let queue = Arc::clone(&queue);
+            let handlers = Arc::clone(&handlers);
+            let shutdown = Arc::clone(&shutdown);
+
+            let handle = tokio::spawn(async move {
+                let worker = Worker::new(worker_id, queue, handlers, shutdown);
+                worker.run().await;
+            });
+
+            workers.push(handle);
+        }
+
+        Self { workers, shutdown, config }
+    }
+
+    pub async fn shutdown(self) {
+        tracing::info!("Initiating graceful shutdown of worker pool");
+        self.shutdown.store(true, Ordering::SeqCst);
+
+        // Wait for all workers to complete current jobs
+        for (i, handle) in self.workers.into_iter().enumerate() {
+            match tokio::time::timeout(Duration::from_secs(30), handle).await {
+                Ok(Ok(())) => tracing::info!("Worker {} shut down cleanly", i),
+                Ok(Err(e)) => tracing::error!("Worker {} panicked: {:?}", i, e),
+                Err(_) => tracing::warn!("Worker {} timed out during shutdown", i),
+            }
+        }
+    }
+}
+
 pub struct Worker {
     id: String,
-    queue: Arc<dyn JobQueue>,
-    handlers: HashMap<JobType, Arc<dyn JobHandler>>,
+    queue: Arc<RedisStreamsQueue>,
+    handlers: Arc<JobHandlers>,
     shutdown: Arc<AtomicBool>,
 }
 
 impl Worker {
     pub async fn run(&self) {
+        tracing::info!("Worker {} starting", self.id);
+
         while !self.shutdown.load(Ordering::SeqCst) {
             match self.queue.dequeue(&self.id).await {
-                Ok(Some(job)) => self.process_job(job).await,
-                Ok(None) => tokio::time::sleep(Duration::from_secs(1)).await,
+                Ok(Some(job)) => {
+                    let span = tracing::info_span!(
+                        "process_job",
+                        job.id = %job.id,
+                        job.type = %job.job_type,
+                        worker.id = %self.id
+                    );
+
+                    self.process_job(job).instrument(span).await;
+                }
+                Ok(None) => {
+                    // No job available, XREADGROUP already blocked
+                    continue;
+                }
                 Err(e) => {
                     tracing::error!("Failed to dequeue job: {}", e);
                     tokio::time::sleep(Duration::from_secs(5)).await;
                 }
             }
         }
+
+        tracing::info!("Worker {} stopped", self.id);
+    }
+
+    async fn process_job(&self, job: Job) {
+        let handler = self.handlers.get(&job.job_type);
+
+        match handler.execute(&job).await {
+            Ok(result) => {
+                self.queue.acknowledge(&job.stream_key, &job.message_id).await.ok();
+                self.queue.record_completion(&job, result).await.ok();
+            }
+            Err(e) if job.attempts < job.max_retries => {
+                // Will be retried via pending message mechanism
+                tracing::warn!("Job {} failed (attempt {}): {}", job.id, job.attempts, e);
+            }
+            Err(e) => {
+                self.queue.fail(&job.stream_key, &job.message_id, &e.to_string()).await.ok();
+                tracing::error!("Job {} permanently failed: {}", job.id, e);
+            }
+        }
     }
 }
 ```
 
-##### Day 5: Job Types & Handlers
+##### Day 3-4: Download Queue Integration
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Create `JobHandler` trait | Process specific job types | Unit tests |
-| Implement download job handler | Execute downloads | Integration tests |
-| Job result serialization | Store execution results | Unit tests |
+| Create `DownloadJobHandler` | Process download jobs | Integration tests |
+| Update download endpoint | Enqueue to Redis Streams | Integration tests |
+| Progress updates via Pub/Sub | Real-time progress | Integration tests |
+| Link downloads to jobs | `job_message_id` column | Migration |
 
-#### Test Requirements - Week 9
+**Download handler:**
 ```rust
-#[tokio::test]
-async fn job_enqueue_creates_pending_job() { }
+// src/jobs/handlers/download.rs
+pub struct DownloadJobHandler {
+    pool: PgPool,
+    storage: Arc<dyn StorageProvider>,
+    redis: redis::Client,
+}
 
-#[tokio::test]
-async fn worker_processes_pending_jobs() { }
+#[async_trait]
+impl JobHandler for DownloadJobHandler {
+    async fn execute(&self, job: &Job) -> Result<JobResult> {
+        let payload: DownloadPayload = serde_json::from_value(job.payload.clone())?;
 
-#[tokio::test]
-async fn failed_job_is_retried() { }
+        // Update download status to InProgress
+        repository::update_download_status(
+            &self.pool,
+            payload.download_id,
+            DownloadStatus::InProgress,
+        ).await?;
 
-#[tokio::test]
-async fn graceful_shutdown_completes_running_jobs() { }
+        // Perform download with progress reporting
+        let result = self.download_with_progress(&payload).await;
 
-#[tokio::test]
-async fn dead_worker_jobs_are_recovered() { }
+        match &result {
+            Ok(download_result) => {
+                repository::complete_download(
+                    &self.pool,
+                    payload.download_id,
+                    &download_result.file_path,
+                    download_result.total_bytes,
+                ).await?;
+
+                // Publish completion event
+                self.publish_event(DownloadEvent::Completed {
+                    download_id: payload.download_id,
+                    user_id: payload.user_id,
+                    file_path: download_result.file_path.clone(),
+                    bytes: download_result.total_bytes,
+                }).await?;
+            }
+            Err(e) => {
+                repository::fail_download(
+                    &self.pool,
+                    payload.download_id,
+                    &e.to_string(),
+                ).await?;
+
+                // Publish failure event
+                self.publish_event(DownloadEvent::Failed {
+                    download_id: payload.download_id,
+                    user_id: payload.user_id,
+                    error: e.to_string(),
+                }).await?;
+            }
+        }
+
+        result.map(|r| JobResult::Download(r))
+    }
+}
+
+impl DownloadJobHandler {
+    async fn download_with_progress(&self, payload: &DownloadPayload) -> Result<DownloadResult> {
+        let mut conn = self.redis.get_multiplexed_async_connection().await?;
+        let progress_channel = format!("progress:{}", payload.download_id);
+
+        // Download with progress callback
+        let progress_callback = |bytes_downloaded: u64, total_bytes: Option<u64>| {
+            let progress = DownloadProgress {
+                download_id: payload.download_id,
+                bytes_downloaded,
+                total_bytes,
+                percentage: total_bytes.map(|t| (bytes_downloaded as f32 / t as f32) * 100.0),
+            };
+
+            // Publish progress via Redis Pub/Sub (fire and forget)
+            let _ = redis::cmd("PUBLISH")
+                .arg(&progress_channel)
+                .arg(serde_json::to_string(&progress).unwrap())
+                .query_async::<()>(&mut conn);
+        };
+
+        // Actual download implementation...
+        download_file_with_progress(&payload.url, progress_callback).await
+    }
+}
 ```
 
----
-
-### Week 10: Download Queue Integration
-
-#### Goals
-- Integrate downloads with job queue
-- Add job scheduling and prioritization
-- Implement job monitoring
-
-#### Tasks
-
-##### Day 1-2: Download Job Integration
-| Task | Description | Tests Required |
-|------|-------------|----------------|
-| Create `DownloadJobHandler` | Execute download jobs | Integration tests |
-| Update `download_file` endpoint | Enqueue instead of execute | Integration tests |
-| Progress updates from jobs | Publish progress events | Integration tests |
-| Job-download relationship | Link job_id to download | Migration |
-
-**Updated download flow:**
+**Updated download endpoint:**
 ```rust
 // src/routes/download.rs
 pub async fn download(
     user_id: web::ReqData<UserId>,
     pool: web::Data<PgPool>,
-    queue: web::Data<dyn JobQueue>,
+    queue: web::Data<Arc<RedisStreamsQueue>>,
     query: web::Query<DownloadQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
     // Create download record
-    let download = repository::create_download(&pool, &user_id, &query.url).await?;
+    let download = repository::create_download(&pool, &user_id.0, &query.url).await.map_err(e500)?;
 
-    // Enqueue job
-    let job = Job::new(JobType::Download, DownloadPayload {
-        download_id: download.id,
+    // Create job
+    let job = Job::new(
+        JobType::Download,
+        serde_json::to_value(DownloadPayload {
+            download_id: download.id,
+            url: query.url.clone(),
+            user_id: user_id.0,
+        }).map_err(e500)?,
+    );
+
+    // Enqueue to Redis Streams
+    let message_id = queue.enqueue(job).await.map_err(e500)?;
+
+    // Link job to download
+    repository::set_download_job_id(&pool, download.id, &message_id).await.map_err(e500)?;
+
+    // Return 202 Accepted with download info
+    Ok(HttpResponse::Accepted().json(DownloadResponse {
+        id: download.id,
+        status: DownloadStatus::Queued,
+        job_message_id: message_id,
         url: query.url.clone(),
-        user_id: user_id.0,
-    });
-    queue.enqueue(job).await.map_err(e500)?;
-
-    Ok(HttpResponse::Accepted().json(download))
+    }))
 }
 ```
 
-##### Day 3-4: Job Scheduling & Priority
+##### Day 5: Job Monitoring & Priority Queues
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Scheduled job execution | Future execution time | Integration tests |
-| Priority queue | Higher priority first | Integration tests |
-| Concurrent download limits | Per-user limits | Integration tests |
-| Queue depth monitoring | Track pending jobs | Metrics |
+| Priority-based stream selection | High priority first | Integration tests |
+| `GET /api/v1/jobs` | List user's jobs from history | Integration tests |
+| Queue depth metrics | XLEN, XPENDING counts | Metrics |
+| Dead letter queue inspection | Admin endpoint | Integration tests |
 
-**Priority levels:**
+**Priority queue implementation:**
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum JobPriority {
-    Low = 0,
-    Normal = 50,
-    High = 100,
-    Critical = 200,
+// Priority is handled by having separate streams per priority level
+// Workers check high-priority streams first
+
+impl RedisStreamsQueue {
+    pub async fn enqueue_with_priority(&self, job: Job, priority: JobPriority) -> Result<String> {
+        let stream_key = format!(
+            "{}:{}:{}",
+            self.config.stream_prefix,
+            job.job_type,
+            priority.as_str()  // "critical", "high", "normal", "low"
+        );
+
+        // ... XADD to priority-specific stream
+    }
+}
+
+impl Worker {
+    async fn dequeue_by_priority(&self) -> Result<Option<Job>> {
+        // Check streams in priority order
+        for priority in [JobPriority::Critical, JobPriority::High, JobPriority::Normal, JobPriority::Low] {
+            let streams = self.get_streams_for_priority(priority);
+            if let Some(job) = self.queue.read_from_streams(&streams, &self.id).await? {
+                return Ok(Some(job));
+            }
+        }
+        Ok(None)
+    }
 }
 ```
-
-##### Day 5: Job Monitoring Endpoints
-| Task | Description | Tests Required |
-|------|-------------|----------------|
-| `GET /api/v1/jobs` | List user's jobs | Integration tests |
-| `GET /api/v1/jobs/{id}` | Get job details | Integration tests |
-| `POST /api/v1/jobs/{id}/cancel` | Cancel pending job | Integration tests |
-| Job statistics | Queue depth, processing rate | Metrics |
 
 #### Deliverables - Week 10
-- [ ] Job queue system fully operational
+- [ ] Redis Streams job queue fully operational
+- [ ] Worker pool with consumer groups
 - [ ] Downloads processed via job queue
-- [ ] Priority-based scheduling
-- [ ] Job monitoring endpoints
-- [ ] Worker pool with graceful shutdown
+- [ ] Real-time progress via Redis Pub/Sub
+- [ ] Job history in PostgreSQL
+- [ ] Priority-based processing
+- [ ] Dead letter queue handling
 - [ ] Comprehensive test coverage
 
 ---
@@ -1421,60 +1919,548 @@ CREATE INDEX idx_usage_user_period ON usage(user_id, period_start);
 
 ---
 
-## Phase 8: Monitoring & Admin (Weeks 15-16)
+## Phase 8: Observability with OpenTelemetry & Kafka (Weeks 15-16)
 
-### Week 15: Monitoring & Observability
+### Week 15: OpenTelemetry Integration & Kafka Events
 
 #### Goals
-- Implement Prometheus metrics
-- Enhance health checks
-- Add system monitoring
+- Implement OpenTelemetry for unified observability
+- Set up Kafka for event streaming
+- Create tracing-based event emission
 
 #### Tasks
 
-##### Day 1-2: Prometheus Metrics
+##### Day 1-2: OpenTelemetry Setup
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Add metrics endpoint | `GET /metrics` | Integration tests |
-| HTTP request metrics | Duration, status codes | Automatic |
-| Database metrics | Query duration, pool stats | Automatic |
-| Business metrics | Downloads, users, jobs | Custom metrics |
+| Add OpenTelemetry dependencies | Cargo.toml update | N/A |
+| Configure OTLP exporter | Export to collector | Integration tests |
+| Integrate with tracing | tracing-opentelemetry | Unit tests |
+| Add trace context propagation | HTTP headers | Integration tests |
+
+**Dependencies:**
+```toml
+# Cargo.toml
+[dependencies]
+opentelemetry = { version = "0.22", features = ["metrics", "trace"] }
+opentelemetry_sdk = { version = "0.22", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.15", features = ["grpc-tonic", "metrics"] }
+opentelemetry-semantic-conventions = "0.14"
+tracing-opentelemetry = "0.23"
+
+# Kafka
+rdkafka = { version = "0.36", features = ["cmake-build", "ssl"] }
+```
+
+**OpenTelemetry configuration:**
+```yaml
+# configuration/base.yaml
+telemetry:
+  service_name: "downloader-rs"
+  service_version: "1.0.0"
+
+  otlp:
+    enabled: true
+    endpoint: "http://otel-collector:4317"
+    protocol: "grpc"  # or "http"
+
+  tracing:
+    enabled: true
+    sample_rate: 1.0  # 100% in dev, lower in prod
+
+  metrics:
+    enabled: true
+    export_interval_seconds: 60
+
+  logging:
+    format: "json"
+    level: "info"
+```
+
+**OpenTelemetry initialization:**
+```rust
+// src/telemetry.rs
+use opentelemetry::trace::TracerProvider;
+use opentelemetry_otlp::WithExportConfig;
+use opentelemetry_sdk::{
+    runtime,
+    trace::{BatchConfig, RandomIdGenerator, Sampler, Tracer},
+    Resource,
+};
+use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
+use tracing_opentelemetry::OpenTelemetryLayer;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+
+pub fn init_telemetry(config: &TelemetryConfig) -> Result<()> {
+    // Create resource with service info
+    let resource = Resource::new(vec![
+        KeyValue::new(SERVICE_NAME, config.service_name.clone()),
+        KeyValue::new(SERVICE_VERSION, config.service_version.clone()),
+    ]);
+
+    // Configure OTLP exporter
+    let exporter = opentelemetry_otlp::new_exporter()
+        .tonic()
+        .with_endpoint(&config.otlp.endpoint);
+
+    // Create tracer provider
+    let tracer_provider = opentelemetry_otlp::new_pipeline()
+        .tracing()
+        .with_exporter(exporter)
+        .with_trace_config(
+            opentelemetry_sdk::trace::Config::default()
+                .with_sampler(Sampler::TraceIdRatioBased(config.tracing.sample_rate))
+                .with_id_generator(RandomIdGenerator::default())
+                .with_resource(resource.clone()),
+        )
+        .with_batch_config(BatchConfig::default())
+        .install_batch(runtime::Tokio)?;
+
+    let tracer = tracer_provider.tracer("downloader-rs");
+
+    // Create metrics provider
+    let meter_provider = opentelemetry_otlp::new_pipeline()
+        .metrics(runtime::Tokio)
+        .with_exporter(
+            opentelemetry_otlp::new_exporter()
+                .tonic()
+                .with_endpoint(&config.otlp.endpoint),
+        )
+        .with_resource(resource)
+        .with_period(Duration::from_secs(config.metrics.export_interval_seconds))
+        .build()?;
+
+    // Set global providers
+    opentelemetry::global::set_tracer_provider(tracer_provider);
+    opentelemetry::global::set_meter_provider(meter_provider);
+
+    // Build tracing subscriber with OpenTelemetry layer
+    let otel_layer = OpenTelemetryLayer::new(tracer);
+
+    let subscriber = tracing_subscriber::registry()
+        .with(otel_layer)
+        .with(tracing_subscriber::fmt::layer().json())
+        .with(tracing_subscriber::EnvFilter::from_default_env());
+
+    subscriber.init();
+
+    Ok(())
+}
+
+pub fn shutdown_telemetry() {
+    opentelemetry::global::shutdown_tracer_provider();
+}
+```
+
+##### Day 3-4: Kafka Event Producer
+| Task | Description | Tests Required |
+|------|-------------|----------------|
+| Set up Kafka producer | rdkafka configuration | Integration tests |
+| Create event schema | Structured event types | Unit tests |
+| Implement event publisher | Async event emission | Integration tests |
+| Add tracing integration | Emit events from spans | Unit tests |
+
+**Kafka configuration:**
+```yaml
+# configuration/base.yaml
+events:
+  enabled: true
+
+  kafka:
+    brokers: ["localhost:9092"]
+    client_id: "downloader-rs"
+    topic_prefix: "downloader"
+
+    producer:
+      acks: "all"
+      retries: 3
+      linger_ms: 5
+      batch_size: 16384
+
+    # Topics created automatically
+    topics:
+      downloads: "downloader.downloads"
+      users: "downloader.users"
+      jobs: "downloader.jobs"
+      system: "downloader.system"
+```
+
+**Event types and publisher:**
+```rust
+// src/events/mod.rs
+use rdkafka::producer::{FutureProducer, FutureRecord};
+use rdkafka::ClientConfig;
+
+#[derive(Debug, Clone, Serialize)]
+pub struct Event {
+    pub id: Uuid,
+    pub event_type: String,
+    pub source: String,
+    pub timestamp: DateTime<Utc>,
+    pub data: serde_json::Value,
+    pub metadata: EventMetadata,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct EventMetadata {
+    pub trace_id: Option<String>,
+    pub span_id: Option<String>,
+    pub user_id: Option<Uuid>,
+    pub correlation_id: Option<String>,
+}
+
+impl Event {
+    pub fn new<T: Serialize>(event_type: &str, data: T) -> Self {
+        // Extract trace context from current span
+        let span = tracing::Span::current();
+        let trace_id = span.context().span().span_context().trace_id().to_string();
+        let span_id = span.context().span().span_context().span_id().to_string();
+
+        Self {
+            id: Uuid::new_v4(),
+            event_type: event_type.to_string(),
+            source: "downloader-rs".to_string(),
+            timestamp: Utc::now(),
+            data: serde_json::to_value(data).unwrap_or_default(),
+            metadata: EventMetadata {
+                trace_id: Some(trace_id),
+                span_id: Some(span_id),
+                user_id: None,
+                correlation_id: None,
+            },
+        }
+    }
+
+    pub fn with_user(mut self, user_id: Uuid) -> Self {
+        self.metadata.user_id = Some(user_id);
+        self
+    }
+}
+
+// Event types
+pub mod events {
+    use super::*;
+
+    // Download events
+    #[derive(Debug, Serialize)]
+    pub struct DownloadStarted {
+        pub download_id: Uuid,
+        pub url: String,
+        pub user_id: Uuid,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct DownloadCompleted {
+        pub download_id: Uuid,
+        pub url: String,
+        pub user_id: Uuid,
+        pub file_path: String,
+        pub bytes: i64,
+        pub duration_ms: i64,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct DownloadFailed {
+        pub download_id: Uuid,
+        pub url: String,
+        pub user_id: Uuid,
+        pub error: String,
+        pub attempts: i32,
+    }
+
+    // User events
+    #[derive(Debug, Serialize)]
+    pub struct UserRegistered {
+        pub user_id: Uuid,
+        pub email: String,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct UserLoggedIn {
+        pub user_id: Uuid,
+        pub method: String,  // "password", "token"
+    }
+
+    // Job events
+    #[derive(Debug, Serialize)]
+    pub struct JobEnqueued {
+        pub job_id: Uuid,
+        pub job_type: String,
+        pub priority: i32,
+    }
+
+    #[derive(Debug, Serialize)]
+    pub struct JobCompleted {
+        pub job_id: Uuid,
+        pub job_type: String,
+        pub duration_ms: i64,
+    }
+}
+
+// Kafka publisher
+pub struct EventPublisher {
+    producer: FutureProducer,
+    config: EventsConfig,
+}
+
+impl EventPublisher {
+    pub fn new(config: &EventsConfig) -> Result<Self> {
+        let producer: FutureProducer = ClientConfig::new()
+            .set("bootstrap.servers", config.kafka.brokers.join(","))
+            .set("client.id", &config.kafka.client_id)
+            .set("acks", &config.kafka.producer.acks)
+            .set("retries", config.kafka.producer.retries.to_string())
+            .set("linger.ms", config.kafka.producer.linger_ms.to_string())
+            .set("batch.size", config.kafka.producer.batch_size.to_string())
+            .create()?;
+
+        Ok(Self { producer, config: config.clone() })
+    }
+
+    #[tracing::instrument(skip(self, event), fields(event_type = %event.event_type))]
+    pub async fn publish(&self, topic: &str, event: Event) -> Result<()> {
+        let key = event.id.to_string();
+        let payload = serde_json::to_string(&event)?;
+
+        let record = FutureRecord::to(topic)
+            .key(&key)
+            .payload(&payload);
+
+        self.producer
+            .send(record, Duration::from_secs(5))
+            .await
+            .map_err(|(e, _)| anyhow::anyhow!("Kafka send error: {}", e))?;
+
+        tracing::debug!(event_id = %event.id, "Event published to Kafka");
+        Ok(())
+    }
+
+    pub async fn publish_download_event(&self, event: impl Serialize, event_type: &str, user_id: Uuid) -> Result<()> {
+        let event = Event::new(event_type, event).with_user(user_id);
+        self.publish(&self.config.kafka.topics.downloads, event).await
+    }
+}
+```
+
+##### Day 5: Tracing Layer for Automatic Event Emission
+| Task | Description | Tests Required |
+|------|-------------|----------------|
+| Create custom tracing layer | Intercept spans | Unit tests |
+| Auto-emit events from spans | `emit_event = true` | Integration tests |
+| Configure event filtering | Which spans emit | Configuration tests |
+
+**Custom tracing layer for Kafka events:**
+```rust
+// src/telemetry/kafka_layer.rs
+use tracing::{Event, Subscriber, span};
+use tracing_subscriber::{layer::Context, Layer};
+
+pub struct KafkaEventLayer {
+    publisher: Arc<EventPublisher>,
+    event_patterns: Vec<String>,  // Span names that should emit events
+}
+
+impl KafkaEventLayer {
+    pub fn new(publisher: Arc<EventPublisher>, patterns: Vec<String>) -> Self {
+        Self { publisher, event_patterns: patterns }
+    }
+}
+
+impl<S: Subscriber> Layer<S> for KafkaEventLayer {
+    fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
+        // Check for emit_event field
+        let mut should_emit = false;
+        let mut event_type = String::new();
+        let mut event_data = serde_json::Map::new();
+
+        event.record(&mut |field: &tracing::field::Field, value: &dyn std::fmt::Debug| {
+            match field.name() {
+                "emit_event" => should_emit = true,
+                "event_type" => event_type = format!("{:?}", value),
+                _ => {
+                    event_data.insert(
+                        field.name().to_string(),
+                        serde_json::Value::String(format!("{:?}", value)),
+                    );
+                }
+            }
+        });
+
+        if should_emit && !event_type.is_empty() {
+            let kafka_event = crate::events::Event::new(
+                &event_type,
+                serde_json::Value::Object(event_data),
+            );
+
+            let publisher = Arc::clone(&self.publisher);
+            let topic = self.topic_for_event_type(&event_type);
+
+            // Fire and forget - don't block the span
+            tokio::spawn(async move {
+                if let Err(e) = publisher.publish(&topic, kafka_event).await {
+                    tracing::warn!("Failed to publish event: {}", e);
+                }
+            });
+        }
+    }
+
+    fn on_close(&self, id: span::Id, ctx: Context<'_, S>) {
+        // Optionally emit events when spans close
+        if let Some(span) = ctx.span(&id) {
+            let name = span.name();
+            if self.event_patterns.iter().any(|p| name.contains(p)) {
+                // Emit span completion event
+            }
+        }
+    }
+}
+```
+
+**Usage in application code:**
+```rust
+// Automatic event emission via tracing
+#[tracing::instrument(fields(emit_event = true, event_type = "download.started"))]
+pub async fn start_download(download_id: Uuid, url: &str, user_id: Uuid) {
+    tracing::info!(
+        download_id = %download_id,
+        url = %url,
+        user_id = %user_id,
+        "Download started"
+    );
+    // The KafkaEventLayer will automatically emit this as a Kafka event
+}
+```
+
+#### Test Requirements - Week 15
+```rust
+#[tokio::test]
+async fn opentelemetry_exports_traces() { }
+
+#[tokio::test]
+async fn kafka_publisher_sends_events() { }
+
+#[tokio::test]
+async fn tracing_layer_emits_to_kafka() { }
+
+#[tokio::test]
+async fn trace_context_propagated_to_events() { }
+
+#[tokio::test]
+async fn metrics_exported_to_otlp() { }
+```
+
+---
+
+### Week 16: Metrics, Health Checks & Admin Features
+
+#### Goals
+- Implement Prometheus-compatible metrics via OpenTelemetry
+- Enhance health checks
+- Build admin features and audit logging
+
+#### Tasks
+
+##### Day 1-2: Metrics via OpenTelemetry
+| Task | Description | Tests Required |
+|------|-------------|----------------|
+| Define custom metrics | Counters, histograms, gauges | Unit tests |
+| Add HTTP metrics middleware | Request duration, status | Integration tests |
+| Add business metrics | Downloads, jobs, users | Integration tests |
+| Prometheus endpoint | `/metrics` for scraping | Integration tests |
 
 **Metrics implementation:**
 ```rust
 // src/metrics.rs
-use prometheus::{
-    Counter, Histogram, IntGauge, Registry,
-    register_counter, register_histogram, register_int_gauge,
+use opentelemetry::{
+    global,
+    metrics::{Counter, Histogram, Meter, UpDownCounter},
+    KeyValue,
 };
 
-lazy_static! {
-    pub static ref REGISTRY: Registry = Registry::new();
+pub struct Metrics {
+    pub http_requests_total: Counter<u64>,
+    pub http_request_duration: Histogram<f64>,
+    pub downloads_total: Counter<u64>,
+    pub downloads_in_progress: UpDownCounter<i64>,
+    pub downloads_bytes_total: Counter<u64>,
+    pub job_queue_depth: UpDownCounter<i64>,
+    pub job_processing_duration: Histogram<f64>,
+    pub active_users: UpDownCounter<i64>,
+}
 
-    pub static ref HTTP_REQUESTS_TOTAL: Counter = register_counter!(
-        "http_requests_total",
-        "Total number of HTTP requests"
-    ).unwrap();
+impl Metrics {
+    pub fn new() -> Self {
+        let meter = global::meter("downloader-rs");
 
-    pub static ref HTTP_REQUEST_DURATION: Histogram = register_histogram!(
-        "http_request_duration_seconds",
-        "HTTP request duration in seconds"
-    ).unwrap();
+        Self {
+            http_requests_total: meter
+                .u64_counter("http_requests_total")
+                .with_description("Total number of HTTP requests")
+                .init(),
 
-    pub static ref DOWNLOADS_IN_PROGRESS: IntGauge = register_int_gauge!(
-        "downloads_in_progress",
-        "Number of downloads currently in progress"
-    ).unwrap();
+            http_request_duration: meter
+                .f64_histogram("http_request_duration_seconds")
+                .with_description("HTTP request duration in seconds")
+                .init(),
 
-    pub static ref DOWNLOADS_TOTAL: Counter = register_counter!(
-        "downloads_total",
-        "Total number of downloads initiated"
-    ).unwrap();
+            downloads_total: meter
+                .u64_counter("downloads_total")
+                .with_description("Total number of downloads initiated")
+                .init(),
 
-    pub static ref JOB_QUEUE_DEPTH: IntGauge = register_int_gauge!(
-        "job_queue_depth",
-        "Number of jobs waiting in queue"
-    ).unwrap();
+            downloads_in_progress: meter
+                .i64_up_down_counter("downloads_in_progress")
+                .with_description("Number of downloads currently in progress")
+                .init(),
+
+            downloads_bytes_total: meter
+                .u64_counter("downloads_bytes_total")
+                .with_description("Total bytes downloaded")
+                .init(),
+
+            job_queue_depth: meter
+                .i64_up_down_counter("job_queue_depth")
+                .with_description("Number of jobs waiting in queue")
+                .init(),
+
+            job_processing_duration: meter
+                .f64_histogram("job_processing_duration_seconds")
+                .with_description("Job processing duration in seconds")
+                .init(),
+
+            active_users: meter
+                .i64_up_down_counter("active_users")
+                .with_description("Number of currently active users")
+                .init(),
+        }
+    }
+}
+
+// Metrics middleware for Actix
+pub struct MetricsMiddleware {
+    metrics: Arc<Metrics>,
+}
+
+impl<S, B> Transform<S, ServiceRequest> for MetricsMiddleware
+where
+    S: Service<ServiceRequest, Response = ServiceResponse<B>, Error = Error>,
+    B: MessageBody,
+{
+    // ... middleware implementation that records metrics
+}
+```
+
+**Prometheus exposition endpoint:**
+```rust
+// For Prometheus scraping, use prometheus-client with OTLP
+// Or expose via OpenTelemetry Collector's Prometheus exporter
+
+pub async fn metrics_handler() -> impl Responder {
+    // Export metrics in Prometheus format
+    // This works when using the Prometheus exporter in OTel Collector
+    HttpResponse::Ok()
+        .content_type("text/plain; version=0.0.4")
+        .body(prometheus_client::encoding::text::encode_to_string(&REGISTRY).unwrap())
 }
 ```
 
@@ -1482,12 +2468,12 @@ lazy_static! {
 | Task | Description | Tests Required |
 |------|-------------|----------------|
 | Detailed health endpoint | `/api/v1/health` | Integration tests |
-| Database health check | Connection test | Integration tests |
-| Redis health check | Ping test | Integration tests |
+| Database health check | Connection + query test | Integration tests |
+| Redis health check | PING + queue depth | Integration tests |
+| Kafka health check | Producer connectivity | Integration tests |
 | Storage health check | Access test | Integration tests |
-| Dependency health aggregation | Overall status | Integration tests |
 
-**Health check response:**
+**Health check implementation:**
 ```rust
 #[derive(Debug, Serialize)]
 pub struct HealthResponse {
@@ -1502,37 +2488,206 @@ pub struct ComponentHealth {
     pub status: HealthStatus,
     pub latency_ms: Option<u64>,
     pub message: Option<String>,
+    pub details: Option<serde_json::Value>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
 pub enum HealthStatus {
     Healthy,
     Degraded,
     Unhealthy,
 }
+
+pub async fn health_check(
+    pool: web::Data<PgPool>,
+    redis: web::Data<redis::Client>,
+    kafka: web::Data<EventPublisher>,
+    storage: web::Data<Arc<dyn StorageProvider>>,
+    start_time: web::Data<Instant>,
+) -> impl Responder {
+    let mut checks = HashMap::new();
+
+    // Database check
+    let db_check = check_database(&pool).await;
+    let db_healthy = db_check.status == HealthStatus::Healthy;
+    checks.insert("database".to_string(), db_check);
+
+    // Redis check
+    let redis_check = check_redis(&redis).await;
+    let redis_healthy = redis_check.status == HealthStatus::Healthy;
+    checks.insert("redis".to_string(), redis_check);
+
+    // Kafka check
+    let kafka_check = check_kafka(&kafka).await;
+    let kafka_healthy = kafka_check.status == HealthStatus::Healthy;
+    checks.insert("kafka".to_string(), kafka_check);
+
+    // Storage check
+    let storage_check = check_storage(&storage).await;
+    let storage_healthy = storage_check.status == HealthStatus::Healthy;
+    checks.insert("storage".to_string(), storage_check);
+
+    // Overall status
+    let status = if db_healthy && redis_healthy && kafka_healthy && storage_healthy {
+        HealthStatus::Healthy
+    } else if db_healthy && redis_healthy {
+        HealthStatus::Degraded
+    } else {
+        HealthStatus::Unhealthy
+    };
+
+    let response = HealthResponse {
+        status: status.clone(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+        uptime_seconds: start_time.elapsed().as_secs(),
+        checks,
+    };
+
+    match status {
+        HealthStatus::Healthy => HttpResponse::Ok().json(response),
+        HealthStatus::Degraded => HttpResponse::Ok().json(response),
+        HealthStatus::Unhealthy => HttpResponse::ServiceUnavailable().json(response),
+    }
+}
+
+async fn check_database(pool: &PgPool) -> ComponentHealth {
+    let start = Instant::now();
+    match sqlx::query("SELECT 1").fetch_one(pool).await {
+        Ok(_) => ComponentHealth {
+            status: HealthStatus::Healthy,
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+            message: None,
+            details: Some(serde_json::json!({
+                "pool_size": pool.size(),
+                "idle_connections": pool.num_idle(),
+            })),
+        },
+        Err(e) => ComponentHealth {
+            status: HealthStatus::Unhealthy,
+            latency_ms: Some(start.elapsed().as_millis() as u64),
+            message: Some(e.to_string()),
+            details: None,
+        },
+    }
+}
+
+async fn check_redis(client: &redis::Client) -> ComponentHealth {
+    let start = Instant::now();
+    match client.get_multiplexed_async_connection().await {
+        Ok(mut conn) => {
+            let pong: RedisResult<String> = redis::cmd("PING").query_async(&mut conn).await;
+            match pong {
+                Ok(_) => {
+                    // Also check queue depths
+                    let queue_info = get_queue_info(&mut conn).await.ok();
+                    ComponentHealth {
+                        status: HealthStatus::Healthy,
+                        latency_ms: Some(start.elapsed().as_millis() as u64),
+                        message: None,
+                        details: queue_info.map(|i| serde_json::to_value(i).unwrap()),
+                    }
+                }
+                Err(e) => ComponentHealth {
+                    status: HealthStatus::Unhealthy,
+                    latency_ms: Some(start.elapsed().as_millis() as u64),
+                    message: Some(e.to_string()),
+                    details: None,
+                },
+            }
+        }
+        Err(e) => ComponentHealth {
+            status: HealthStatus::Unhealthy,
+            latency_ms: None,
+            message: Some(e.to_string()),
+            details: None,
+        },
+    }
+}
 ```
 
-##### Day 5: Alerting Foundation
+##### Day 5: Admin Features & Audit Logging
 | Task | Description | Tests Required |
 |------|-------------|----------------|
-| Alert rules definition | Prometheus alerting rules | Documentation |
-| Grafana dashboard | Visualization templates | Manual setup |
-| Log aggregation setup | Structured log shipping | Configuration |
+| Add admin role to users | `is_admin` column | Migration |
+| Admin middleware | Verify admin status | Unit tests |
+| Audit log table | Track all actions | Migration |
+| Admin endpoints | User management, stats | Integration tests |
 
-#### Test Requirements - Week 15
-```rust
-#[tokio::test]
-async fn metrics_endpoint_returns_prometheus_format() { }
-
-#[tokio::test]
-async fn health_check_reports_database_status() { }
-
-#[tokio::test]
-async fn health_check_reports_redis_status() { }
-
-#[tokio::test]
-async fn degraded_health_when_component_slow() { }
+**Admin migration:**
+```sql
+-- migrations/YYYYMMDDHHMMSS_add_admin_role.up.sql
+ALTER TABLE users ADD COLUMN is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX idx_users_is_admin ON users(is_admin) WHERE is_admin = TRUE;
 ```
+
+**Audit log migration:**
+```sql
+-- migrations/YYYYMMDDHHMMSS_create_audit_logs_table.up.sql
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action TEXT NOT NULL,
+    resource_type TEXT NOT NULL,
+    resource_id UUID,
+    old_values JSONB,
+    new_values JSONB,
+    ip_address INET,
+    user_agent TEXT,
+    trace_id TEXT,  -- Link to distributed trace
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
+CREATE INDEX idx_audit_logs_resource ON audit_logs(resource_type, resource_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at DESC);
+CREATE INDEX idx_audit_logs_trace_id ON audit_logs(trace_id);
+```
+
+**Admin endpoints:**
+```rust
+// Admin routes - all require admin middleware
+pub fn admin_routes() -> Scope {
+    web::scope("/admin")
+        .wrap(from_fn(require_admin))
+        .route("/stats", web::get().to(get_admin_stats))
+        .route("/users", web::get().to(list_users))
+        .route("/users/{id}", web::get().to(get_user))
+        .route("/users/{id}", web::patch().to(update_user))
+        .route("/users/{id}", web::delete().to(delete_user))
+        .route("/downloads", web::get().to(list_all_downloads))
+        .route("/jobs", web::get().to(list_all_jobs))
+        .route("/jobs/dead-letter", web::get().to(list_dead_letter_jobs))
+        .route("/audit-logs", web::get().to(list_audit_logs))
+        .route("/events", web::get().to(list_recent_events))
+}
+
+#[derive(Debug, Serialize)]
+pub struct AdminStats {
+    pub users: UserStats,
+    pub downloads: DownloadStats,
+    pub jobs: JobStats,
+    pub storage: StorageStats,
+    pub events: EventStats,
+}
+
+#[derive(Debug, Serialize)]
+pub struct EventStats {
+    pub events_today: i64,
+    pub events_this_hour: i64,
+    pub kafka_lag: Option<i64>,
+}
+```
+
+#### Deliverables - Week 16
+- [ ] OpenTelemetry fully integrated (traces, metrics, logs)
+- [ ] Kafka event streaming operational
+- [ ] Prometheus-compatible metrics endpoint
+- [ ] Comprehensive health checks (DB, Redis, Kafka, Storage)
+- [ ] Admin role and middleware
+- [ ] Audit logging with trace correlation
+- [ ] Admin dashboard endpoints
+- [ ] Complete documentation
 
 ---
 
@@ -1748,14 +2903,24 @@ pub struct Webhook {
 # Unit tests (fast, no external dependencies)
 cargo test --lib
 
-# Integration tests (require database)
+# Integration tests (require database, Redis)
 cargo test --test '*'
 
 # Specific feature tests
 cargo test --features "integration" download_
 
+# Redis Streams tests
+cargo test --features "integration" redis_queue_
+
+# Kafka event tests (requires Kafka running)
+cargo test --features "kafka" events_
+
 # Performance/load tests
 cargo test --release --features "benchmark"
+
+# Full integration with all services
+docker compose -f docker-compose.test.yml up -d
+cargo test --features "full-integration"
 ```
 
 ### Continuous Testing
@@ -1794,10 +2959,10 @@ cargo test --release --features "benchmark"
 | API Enhancements | Response time < 100ms (p95) |
 | User Management | Auth flow completion > 99% |
 | Download Management | Resume success rate > 90% |
-| Background Jobs | Job completion rate > 99% |
+| Background Jobs (Redis Streams) | Job completion rate > 99%, queue latency < 10ms |
 | File Organization | Search latency < 200ms (p95) |
 | Storage | Upload success rate > 99.9% |
-| Monitoring | Alert accuracy > 95% |
+| Observability (OTel + Kafka) | Trace sampling > 99%, event delivery > 99.9% |
 
 ### Final Success Criteria
 - [ ] All 10 feature areas implemented
@@ -1806,6 +2971,10 @@ cargo test --release --features "benchmark"
 - [ ] No critical security vulnerabilities
 - [ ] Performance benchmarks met
 - [ ] Admin features operational
+- [ ] Redis Streams job queue operational with < 10ms latency
+- [ ] Kafka event streaming with full trace correlation
+- [ ] OpenTelemetry traces visible in Jaeger
+- [ ] Prometheus metrics scraped and visualized in Grafana
 
 ---
 
@@ -1840,6 +3009,274 @@ cargo test --release --features "benchmark"
 - [ ] Code review completed
 - [ ] PR merged to development branch
 - [ ] Demo to stakeholders (if applicable)
+```
+
+---
+
+---
+
+## Appendix B: Infrastructure Setup
+
+### Development Environment (docker-compose.dev.yml)
+
+```yaml
+version: "3.8"
+
+services:
+  # Application
+  downloader-rs:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENVIRONMENT=local
+      - DATABASE_URL=postgres://postgres:password@postgres:5432/downloader
+      - REDIS_URL=redis://redis:6379
+      - KAFKA_BROKERS=kafka:9092
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+      - otel-collector
+    volumes:
+      - ./:/app
+      - cargo-cache:/usr/local/cargo/registry
+
+  # PostgreSQL
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: downloader
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis (Sessions + Job Queue)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Kafka (Event Streaming)
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      - zookeeper
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  # Kafka UI (Development)
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      - kafka
+
+  # OpenTelemetry Collector
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.91.0
+    ports:
+      - "4317:4317"   # OTLP gRPC
+      - "4318:4318"   # OTLP HTTP
+      - "8888:8888"   # Prometheus metrics (collector)
+      - "8889:8889"   # Prometheus exporter
+    volumes:
+      - ./otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    depends_on:
+      - jaeger
+      - prometheus
+
+  # Jaeger (Distributed Tracing)
+  jaeger:
+    image: jaegertracing/all-in-one:1.52
+    ports:
+      - "16686:16686"  # UI
+      - "14268:14268"  # HTTP collector
+      - "14250:14250"  # gRPC collector
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+
+  # Prometheus (Metrics)
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+
+  # Grafana (Dashboards)
+  grafana:
+    image: grafana/grafana:10.2.0
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+      - jaeger
+
+  # MinIO (S3-compatible storage for development)
+  minio:
+    image: minio/minio:latest
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio-data:/data
+
+volumes:
+  postgres-data:
+  redis-data:
+  kafka-data:
+  zookeeper-data:
+  prometheus-data:
+  grafana-data:
+  minio-data:
+  cargo-cache:
+```
+
+### OpenTelemetry Collector Configuration
+
+```yaml
+# otel-collector-config.yaml
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 1000
+    spike_limit_mib: 200
+
+exporters:
+  # Traces to Jaeger
+  otlp/jaeger:
+    endpoint: jaeger:4317
+    tls:
+      insecure: true
+
+  # Metrics to Prometheus
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    namespace: downloader
+
+  # Logs to stdout (or configure for Loki/Elasticsearch)
+  logging:
+    loglevel: info
+
+  # Optional: Export to Kafka for event replay
+  kafka:
+    brokers:
+      - kafka:9092
+    topic: otel-traces
+    encoding: otlp_json
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp/jaeger, kafka]
+
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [logging]
+```
+
+### Prometheus Configuration
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape OpenTelemetry Collector's Prometheus exporter
+  - job_name: 'otel-collector'
+    static_configs:
+      - targets: ['otel-collector:8889']
+
+  # Scrape application directly if exposing /metrics
+  - job_name: 'downloader-rs'
+    static_configs:
+      - targets: ['downloader-rs:8000']
+    metrics_path: '/metrics'
 ```
 
 ---
