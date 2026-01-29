@@ -45,7 +45,7 @@ pub async fn login(
             session.insert_user_id(user_id).map_err(e401)?;
             let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
             Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
-        }
+        },
         Err(e) => Err(e401(e)),
     }
 }
@@ -72,7 +72,7 @@ pub async fn register(
             session.insert_user_id(user_id).map_err(e401)?;
             let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
             Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
-        }
+        },
         Err(e) => Err(e500(e)),
     }
 }

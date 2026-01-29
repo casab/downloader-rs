@@ -50,7 +50,7 @@ pub async fn update_download_status(
                 download_id,
                 file_path
             )
-        }
+        },
         _ => sqlx::query!(
             "UPDATE downloads SET status = $1, updated_at = NOW() WHERE id = $2",
             status as DownloadStatus,

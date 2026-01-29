@@ -36,7 +36,7 @@ pub async fn download(
             .await
             .map_err(e500)?;
             return Ok(HttpResponse::Ok().finish());
-        }
+        },
         Err(err) => {
             tracing::error!(error = ?err, download_id = download.id.to_string(), "Failed to download the file");
             update_download_status(download.id, DownloadStatus::Failed, None, &pool)
@@ -47,7 +47,7 @@ pub async fn download(
                 ManicError::NotFound => Err(e404("Failed to find the file")),
                 _ => Err(e500("Failed to download the file")),
             };
-        }
+        },
     }
 }
 
@@ -65,7 +65,7 @@ pub async fn get_download(
                 return Err(e404("Download not found"));
             }
             Ok(HttpResponse::Ok().json(download))
-        }
+        },
         None => Err(e404("Download not found")),
     }
 }

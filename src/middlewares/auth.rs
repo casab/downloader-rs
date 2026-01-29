@@ -87,7 +87,7 @@ async fn validate_jwt(
         ) {
             Ok(token_data) => {
                 return Ok(UserId(token_data.claims.sub));
-            }
+            },
             Err(e) => return Err(e401(e)),
         }
     }

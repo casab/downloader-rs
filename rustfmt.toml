@@ -1,0 +1,32 @@
+# Rustfmt configuration for downloader-rs
+# https://rust-lang.github.io/rustfmt/
+#
+# Note: Some options are commented out as they require nightly Rust.
+# Uncomment them if using nightly for formatting.
+
+edition = "2024"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+use_small_heuristics = "Default"
+
+# Stable options
+use_field_init_shorthand = true
+use_try_shorthand = true
+reorder_imports = true
+reorder_modules = true
+fn_params_layout = "Tall"
+match_block_trailing_comma = true
+match_arm_leading_pipes = "Never"
+chain_width = 60
+
+# Nightly-only options (uncomment if using nightly for formatting)
+# imports_granularity = "Module"
+# group_imports = "StdExternalCrate"
+# format_code_in_doc_comments = true
+# format_macro_matchers = true
+# format_strings = false
+# wrap_comments = true
+# comment_width = 100
+# match_arm_blocks = true
+# struct_lit_single_line = true
