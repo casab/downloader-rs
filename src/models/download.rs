@@ -14,7 +14,7 @@ pub struct Download {
     pub completed_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Serialize, Deserialize, sqlx::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
 #[sqlx(type_name = "TEXT", rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum DownloadStatus {
     Pending,

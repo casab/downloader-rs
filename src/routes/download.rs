@@ -1,8 +1,8 @@
 use crate::clients::S3Client;
 use crate::middlewares::UserId;
-use crate::models::DownloadStatus;
+use crate::models::{DownloadQueryParams, DownloadStatus};
 use crate::repository::{
-    create_download, get_all_downloads, get_download_by_id, update_download_status,
+    create_download, get_download_by_id, get_downloads_paginated, update_download_status,
 };
 use crate::utils::{download_file, e404, e500};
 use actix_web::{HttpResponse, web};
@@ -70,13 +70,26 @@ pub async fn get_download(
     }
 }
 
-#[tracing::instrument(name = "Get all downloads", skip(pool))]
+#[tracing::instrument(name = "Get all downloads", skip(pool, query))]
 pub async fn get_downloads(
     pool: web::Data<PgPool>,
     user_id: web::ReqData<UserId>,
+    query: web::Query<DownloadQueryParams>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let downloads = get_all_downloads(&pool, &user_id.into_inner())
-        .await
-        .map_err(e500)?;
-    Ok(HttpResponse::Ok().json(downloads))
+    let query_params = query.into_inner();
+    let pagination = query_params.pagination();
+    let filter = query_params.filter();
+    let sort = query_params.sorting();
+
+    let response = get_downloads_paginated(
+        &pool,
+        &user_id.into_inner(),
+        &pagination,
+        &filter,
+        &sort,
+    )
+    .await
+    .map_err(e500)?;
+
+    Ok(HttpResponse::Ok().json(response))
 }

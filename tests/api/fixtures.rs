@@ -153,18 +153,18 @@ impl DownloadBuilder {
     pub async fn build(self, pool: &PgPool) -> TestDownload {
         let user_id = self.user_id.expect("user_id must be set before building");
 
-        sqlx::query!(
+        sqlx::query(
             r#"
             INSERT INTO downloads (id, url, status, file_path, user_id, completed_at)
             VALUES ($1, $2, $3, $4, $5, $6)
             "#,
-            self.id,
-            self.url,
-            self.status,
-            self.file_path,
-            user_id,
-            self.completed_at,
         )
+        .bind(self.id)
+        .bind(&self.url)
+        .bind(&self.status)
+        .bind(&self.file_path)
+        .bind(user_id)
+        .bind(self.completed_at)
         .execute(pool)
         .await
         .expect("Failed to insert test download");
