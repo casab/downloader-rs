@@ -1,3 +1,5 @@
+mod admin;
+mod audit;
 mod bulk;
 mod download;
 pub mod filter;
@@ -11,6 +13,8 @@ pub mod token;
 mod usage;
 mod user;
 
+pub use admin::*;
+pub use audit::*;
 pub use bulk::*;
 pub use download::*;
 pub use filter::DownloadFilter;

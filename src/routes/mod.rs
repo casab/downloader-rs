@@ -1,3 +1,4 @@
+mod admin;
 mod auth;
 mod bulk;
 mod download;
@@ -8,6 +9,7 @@ mod tag;
 mod usage;
 mod user;
 
+pub use admin::*;
 pub use auth::*;
 pub use bulk::*;
 pub use download::*;

@@ -449,9 +449,9 @@ A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_
 | 3 | 5-6 | User Management (Profile, Password Reset, Email Verification) | ✅ Complete |
 | 4 | 7-8 | Download Management (Progress, Pause/Resume, Retry) | ✅ Complete |
 | 5 | 9-10 | Background Jobs (Redis Streams Queue System) | ✅ Complete |
-| 6 | 11-12 | File Organization (Folders, Tags, Search) | 🔲 Pending |
-| 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
-| 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin Features | 🔲 Pending |
+| 6 | 11-12 | File Organization (Folders, Tags, Search) | ✅ Complete |
+| 7 | 13-14 | Storage Options & Rate Limiting | ✅ Complete |
+| 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin Features | ✅ Complete |
 
 ### Phase 1 Deliverables (Complete)
 - ✅ `rust-toolchain.toml` - Rust version pinning (stable)
@@ -506,6 +506,43 @@ A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_
 - ✅ Migration for job_history table and downloads.job_message_id
 - ✅ Dead letter queue for failed jobs
 - ✅ Progress updates via Redis Pub/Sub
+
+### Phase 6 Deliverables (Complete)
+- ✅ `src/models/folder.rs` - Folder model with materialized path hierarchy
+- ✅ `src/models/tag.rs` - Tag model with color validation
+- ✅ `src/models/search.rs` - SearchQuery, SearchResponse types
+- ✅ `src/models/bulk.rs` - BulkRequest, BulkResponse types
+- ✅ `src/repository/folder.rs` - Folder CRUD with hierarchy operations
+- ✅ `src/repository/tag.rs` - Tag CRUD with download associations
+- ✅ `src/repository/search.rs` - Full-text search across downloads
+- ✅ `src/routes/folder.rs` - Folder endpoints (create, list, get, update, move, delete)
+- ✅ `src/routes/tag.rs` - Tag endpoints (CRUD + download tag management)
+- ✅ `src/routes/search.rs` - Search endpoint (GET /search)
+- ✅ `src/routes/bulk.rs` - Bulk operations (move, tag, untag, delete)
+- ✅ Migrations for folders, tags, and download_tags tables
+
+### Phase 7 Deliverables (Complete)
+- ✅ `src/clients/storage/` module - StorageProvider trait, LocalStorage, S3Storage
+- ✅ `src/middlewares/rate_limit.rs` - Rate limiter with Redis backend
+- ✅ `src/utils/throttle.rs` - BandwidthThrottle with token bucket algorithm
+- ✅ `src/models/usage.rs` - Usage tracking and period types
+- ✅ `src/routes/usage.rs` - GET /me/usage endpoint
+- ✅ Migrations for usage_records table
+
+### Phase 8 Deliverables (Complete)
+- ✅ `src/telemetry.rs` - Enhanced with OpenTelemetry integration (SdkTracerProvider, SdkMeterProvider, OTLP exporters)
+- ✅ `src/events/` module - Event-driven architecture (Event types, EventPublisher trait, LogEventPublisher, optional KafkaEventPublisher)
+- ✅ `src/metrics.rs` - Application metrics with OpenTelemetry (counters, histograms, Prometheus encoding)
+- ✅ `src/routes/health_check.rs` - Enhanced with detailed_health_check (component-level status)
+- ✅ `src/models/admin.rs` - AdminStats, AdminUserRow, AdminUpdateUserRequest
+- ✅ `src/models/audit.rs` - AuditLog, CreateAuditLog, AuditLogQuery
+- ✅ `src/middlewares/admin.rs` - require_admin middleware
+- ✅ `src/repository/admin.rs` - Admin user management, stats aggregation
+- ✅ `src/repository/audit.rs` - Audit log creation and querying
+- ✅ `src/routes/admin.rs` - Admin routes (stats, user management, downloads, audit logs, metrics)
+- ✅ Migrations for is_admin column and audit_logs table
+- ✅ Kafka support behind optional `kafka` feature flag (rdkafka)
+- ✅ 116 unit tests passing (25 new in Phase 8)
 
 ### Feature Areas Covered
 1. **Download Management**: Progress tracking, pause/resume, retry logic

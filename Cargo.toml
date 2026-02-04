@@ -54,6 +54,17 @@ sha2 = "0.10.9"
 base64 = "0.22.1"
 redis = { version = "1.0.3", features = ["tokio-comp", "streams"] }
 async-trait = "0.1.89"
+opentelemetry = { version = "0.31", features = ["metrics"] }
+opentelemetry_sdk = { version = "0.31", features = ["rt-tokio", "metrics"] }
+opentelemetry-otlp = { version = "0.31", features = ["grpc-tonic", "metrics"] }
+opentelemetry-semantic-conventions = "0.31"
+tracing-opentelemetry = "0.32"
+prometheus-client = "0.24"
+rdkafka = { version = "0.39", features = ["cmake-build"], optional = true }
+
+[features]
+default = []
+kafka = ["rdkafka"]
 
 [dependencies.sqlx]
 version = "0.8.6"

@@ -1,6 +1,6 @@
 use crate::clients::get_s3_client;
 use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
-use crate::middlewares::reject_anonymous_users;
+use crate::middlewares::{reject_anonymous_users, require_admin};
 use crate::routes::{
     // Auth & User
     cancel_download, change_password, delete_account, download, forgot_password, get_current_user,
@@ -19,6 +19,10 @@ use crate::routes::{
     search_handler,
     // Usage
     get_usage,
+    // Health & Admin
+    detailed_health_check, get_admin_stats, admin_list_users, admin_get_user,
+    admin_update_user, admin_delete_user, list_audit_logs, admin_list_downloads,
+    metrics_handler,
 };
 use crate::utils::error_handler;
 use actix_session::{SessionMiddleware, storage::RedisSessionStore};
@@ -111,6 +115,7 @@ async fn run(
                     .route("/auth", web::post().to(login))
                     .route("/register", web::post().to(register))
                     .route("/health_check", web::get().to(health_check))
+                    .route("/health", web::get().to(detailed_health_check))
                     // Password reset (public)
                     .route("/auth/forgot-password", web::post().to(forgot_password))
                     .route("/auth/reset-password", web::post().to(reset_password))
@@ -164,8 +169,23 @@ async fn run(
                             .route("/search", web::get().to(search_handler))
                             // Usage
                             .route("/me/usage", web::get().to(get_usage)),
+                    )
+                    // Admin routes (require auth + admin)
+                    .service(
+                        web::scope("/admin")
+                            .wrap(from_fn(require_admin))
+                            .wrap(from_fn(reject_anonymous_users))
+                            .route("/stats", web::get().to(get_admin_stats))
+                            .route("/users", web::get().to(admin_list_users))
+                            .route("/users/{id}", web::get().to(admin_get_user))
+                            .route("/users/{id}", web::patch().to(admin_update_user))
+                            .route("/users/{id}", web::delete().to(admin_delete_user))
+                            .route("/downloads", web::get().to(admin_list_downloads))
+                            .route("/audit-logs", web::get().to(list_audit_logs)),
                     ),
             )
+            // Metrics endpoint (outside /api/v1 scope)
+            .route("/metrics", web::get().to(metrics_handler))
             .app_data(db_pool.clone())
             .app_data(s3_client.clone())
             .app_data(base_url.clone())
