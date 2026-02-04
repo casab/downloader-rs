@@ -6,14 +6,14 @@
 |-------|-------|-------|--------|
 | 1 | 1-2 | CI/CD, Testing Infrastructure, Documentation | ✅ **COMPLETE** |
 | 2 | 3-4 | API Enhancements (Pagination, Filtering, Sorting) | ✅ **COMPLETE** |
-| 3 | 5-6 | User Management | 🔲 Pending |
-| 4 | 7-8 | Download Management | 🔲 Pending |
+| 3 | 5-6 | User Management | ✅ **COMPLETE** |
+| 4 | 7-8 | Download Management | ✅ **COMPLETE** |
 | 5 | 9-10 | Background Jobs (Redis Streams) | 🔲 Pending |
 | 6 | 11-12 | File Organization | 🔲 Pending |
 | 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
 | 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin | 🔲 Pending |
 
-*Last updated: Phase 2 completed*
+*Last updated: Phase 4 completed*
 
 ---
 
@@ -827,12 +827,12 @@ impl RetryPolicy {
 | Batch cancellation | Cancel multiple downloads | Integration tests |
 
 #### Deliverables - Week 8
-- [ ] Pause/resume working for HTTP Range-supported servers
-- [ ] Intelligent retry with exponential backoff
-- [ ] Download cancellation with cleanup
-- [ ] Progress tracking API complete
-- [ ] WebSocket foundation ready
-- [ ] Comprehensive test coverage
+- [x] Pause/resume working for HTTP Range-supported servers
+- [x] Intelligent retry with exponential backoff
+- [x] Download cancellation with cleanup
+- [x] Progress tracking API complete
+- [ ] WebSocket foundation ready (deferred to Phase 5)
+- [x] Comprehensive test coverage
 
 ---
 

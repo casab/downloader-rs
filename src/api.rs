@@ -2,9 +2,10 @@ use crate::clients::get_s3_client;
 use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
 use crate::middlewares::reject_anonymous_users;
 use crate::routes::{
-    change_password, delete_account, download, forgot_password, get_current_user, get_download,
-    get_downloads, health_check, login, register, resend_verification, reset_password,
-    update_profile, verify_email,
+    cancel_download, change_password, delete_account, download, forgot_password, get_current_user,
+    get_download, get_downloads, get_progress, health_check, login, pause_download, register,
+    resend_verification, reset_password, resume_download, retry_download, update_profile,
+    verify_email,
 };
 use crate::utils::error_handler;
 use actix_session::{SessionMiddleware, storage::RedisSessionStore};
@@ -116,7 +117,13 @@ async fn run(
                             // Downloads
                             .route("/download_file", web::get().to(download))
                             .route("/downloads/{id}", web::get().to(get_download))
-                            .route("/downloads", web::get().to(get_downloads)),
+                            .route("/downloads", web::get().to(get_downloads))
+                            // Download control
+                            .route("/downloads/{id}/progress", web::get().to(get_progress))
+                            .route("/downloads/{id}/pause", web::post().to(pause_download))
+                            .route("/downloads/{id}/resume", web::post().to(resume_download))
+                            .route("/downloads/{id}/retry", web::post().to(retry_download))
+                            .route("/downloads/{id}/cancel", web::post().to(cancel_download)),
                     ),
             )
             .app_data(db_pool.clone())

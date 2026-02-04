@@ -94,7 +94,7 @@ impl PaginationParams {
 }
 
 /// Metadata about pagination in a response.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginationMeta {
     /// Current page number.
     pub page: u32,
@@ -161,7 +161,7 @@ impl PaginationMeta {
 }
 
 /// A paginated response wrapper.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PaginatedResponse<T> {
     /// The data items for this page.
     pub data: Vec<T>,

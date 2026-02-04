@@ -127,6 +127,20 @@ pub async fn spawn_app() -> TestApp {
 
     test_app.test_user.store(&test_app.db_pool).await;
 
+    // Wait for the server to be ready by polling the health check endpoint
+    for _ in 0..50 {
+        if test_app
+            .api_client
+            .get(&format!("{}/api/v1/health_check", test_app.address))
+            .send()
+            .await
+            .is_ok()
+        {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
     test_app
 }
 

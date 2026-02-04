@@ -1,10 +1,12 @@
 use crate::clients::S3Client;
 use crate::middlewares::UserId;
-use crate::models::{DownloadQueryParams, DownloadStatus};
+use crate::models::{DownloadProgress, DownloadQueryParams, DownloadStatus};
 use crate::repository::{
-    create_download, get_download_by_id, get_downloads_paginated, update_download_status,
+    cancel_download as repo_cancel, create_download, get_download_by_id,
+    get_downloads_paginated, get_user_download_by_id, pause_download as repo_pause,
+    resume_download as repo_resume, retry_download as repo_retry, update_download_status,
 };
-use crate::utils::{download_file, e404, e500};
+use crate::utils::{download_file, e400, e404, e500};
 use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 
@@ -21,7 +23,7 @@ pub async fn download(
     s3_client: web::Data<Option<S3Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
-    let download = create_download(file_link, &user_id.into_inner(), &pool)
+    let download = create_download(file_link, &user_id.into_inner(), None, None, &pool)
         .await
         .map_err(e500)?;
 
@@ -31,6 +33,7 @@ pub async fn download(
                 download.id,
                 DownloadStatus::Completed,
                 Some(file_path),
+                None,
                 &pool,
             )
             .await
@@ -39,9 +42,15 @@ pub async fn download(
         },
         Err(err) => {
             tracing::error!(error = ?err, download_id = download.id.to_string(), "Failed to download the file");
-            update_download_status(download.id, DownloadStatus::Failed, None, &pool)
-                .await
-                .map_err(e500)?;
+            update_download_status(
+                download.id,
+                DownloadStatus::Failed,
+                None,
+                Some(err.to_string()),
+                &pool,
+            )
+            .await
+            .map_err(e500)?;
             use manic::ManicError;
             return match err {
                 ManicError::NotFound => Err(e404("Failed to find the file")),
@@ -92,4 +101,128 @@ pub async fn get_downloads(
     .map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(response))
+}
+
+/// Get download progress information.
+#[tracing::instrument(name = "Get download progress", skip(pool))]
+pub async fn get_progress(
+    parameters: web::Path<uuid::Uuid>,
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let download_id = parameters.into_inner();
+    let user_id = user_id.into_inner();
+
+    let download = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
+
+    let progress = DownloadProgress::from_download(&download);
+    Ok(HttpResponse::Ok().json(progress))
+}
+
+/// Pause an in-progress download.
+#[tracing::instrument(name = "Pause download", skip(pool))]
+pub async fn pause_download(
+    parameters: web::Path<uuid::Uuid>,
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let download_id = parameters.into_inner();
+    let user_id = user_id.into_inner();
+
+    // First check ownership and current state
+    let download = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
+
+    if !download.can_pause() {
+        return Err(e400(format!(
+            "Cannot pause download in {} state",
+            download.status
+        )));
+    }
+
+    let updated = repo_pause(download_id, &pool).await.map_err(e500)?;
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Resume a paused download.
+#[tracing::instrument(name = "Resume download", skip(pool))]
+pub async fn resume_download(
+    parameters: web::Path<uuid::Uuid>,
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let download_id = parameters.into_inner();
+    let user_id = user_id.into_inner();
+
+    let download = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
+
+    if !download.can_resume() {
+        return Err(e400(format!(
+            "Cannot resume download in {} state",
+            download.status
+        )));
+    }
+
+    let updated = repo_resume(download_id, &pool).await.map_err(e500)?;
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Retry a failed download.
+#[tracing::instrument(name = "Retry download", skip(pool))]
+pub async fn retry_download(
+    parameters: web::Path<uuid::Uuid>,
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let download_id = parameters.into_inner();
+    let user_id = user_id.into_inner();
+
+    let download = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
+
+    if !download.can_retry() {
+        return Err(e400(format!(
+            "Cannot retry download: status is {} (retry count: {}/{})",
+            download.status, download.retry_count, download.max_retries
+        )));
+    }
+
+    let updated = repo_retry(download_id, &pool).await.map_err(e500)?;
+    Ok(HttpResponse::Ok().json(updated))
+}
+
+/// Cancel a download.
+#[tracing::instrument(name = "Cancel download", skip(pool))]
+pub async fn cancel_download(
+    parameters: web::Path<uuid::Uuid>,
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let download_id = parameters.into_inner();
+    let user_id = user_id.into_inner();
+
+    let download = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
+
+    if !download.can_cancel() {
+        return Err(e400(format!(
+            "Cannot cancel download in {} state",
+            download.status
+        )));
+    }
+
+    let updated = repo_cancel(download_id, &pool).await.map_err(e500)?;
+    Ok(HttpResponse::Ok().json(updated))
 }
