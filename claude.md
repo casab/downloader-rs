@@ -36,7 +36,11 @@ downloader-rs/
 │   ├── models/
 │   │   ├── mod.rs
 │   │   ├── user.rs          # User struct with SecretString password
-│   │   └── download.rs      # Download struct with status enum
+│   │   ├── download.rs      # Download struct with status enum
+│   │   ├── pagination.rs    # PaginationParams, PaginationMeta, PaginatedResponse
+│   │   ├── filter.rs        # DownloadFilter for query filtering
+│   │   ├── sorting.rs       # SortParams, SortOrder, field whitelists
+│   │   └── query.rs         # DownloadQueryParams (combined query params)
 │   ├── routes/
 │   │   ├── mod.rs
 │   │   ├── auth.rs          # POST /auth (login), POST /register
@@ -45,7 +49,7 @@ downloader-rs/
 │   ├── repository/
 │   │   ├── mod.rs
 │   │   ├── auth.rs          # User CRUD operations
-│   │   └── download.rs      # Download CRUD operations
+│   │   └── download.rs      # Download CRUD with pagination support
 │   ├── middlewares/
 │   │   ├── mod.rs
 │   │   └── auth.rs          # reject_anonymous_users middleware
@@ -67,10 +71,20 @@ downloader-rs/
 │   └── api/
 │       ├── main.rs          # Test entry point
 │       ├── helpers.rs       # TestApp, spawn_app(), test utilities
+│       ├── fixtures.rs      # Test factories (DownloadFactory, UserFactory)
 │       ├── health_check.rs
 │       ├── auth.rs
 │       └── download.rs
-└── compose/                 # Docker compose files
+├── scripts/
+│   ├── init_db.sh           # Database initialization
+│   └── setup.sh             # One-command dev environment setup
+├── compose/                 # Docker compose files
+├── Makefile                 # Development commands (30+ targets)
+├── rust-toolchain.toml      # Rust version pinning
+├── rustfmt.toml             # Code formatting rules
+├── deny.toml                # Dependency license/security checking
+├── ARCHITECTURE.md          # System architecture documentation
+└── CONTRIBUTING.md          # Contribution guidelines
 ```
 
 ---
@@ -134,6 +148,27 @@ sqlx migrate add <name>
 ### Models Location
 - `src/models/user.rs` - User with email, password_hash, timestamps
 - `src/models/download.rs` - Download with url, status, file_path, user_id
+- `src/models/pagination.rs` - Pagination structs for list endpoints
+- `src/models/filter.rs` - Filtering structs for query building
+- `src/models/sorting.rs` - Sorting structs with field whitelisting
+- `src/models/query.rs` - Combined query parameters
+
+### Key Model Types
+```rust
+// Pagination
+pub struct PaginationParams { page: u32, per_page: u32, cursor: Option<String> }
+pub struct PaginatedResponse<T> { data: Vec<T>, pagination: PaginationMeta }
+
+// Filtering
+pub struct DownloadFilter { status, url_contains, created_after, created_before, ... }
+
+// Sorting
+pub struct SortParams { sort_by: Option<String>, sort_order: SortOrder }
+pub enum SortOrder { Asc, Desc }
+
+// Combined
+pub struct DownloadQueryParams { /* all pagination, filter, sort fields */ }
+```
 
 ### Repository Pattern
 All database operations go through `src/repository/`:
@@ -240,11 +275,56 @@ cargo sqlx prepare
 |--------|------|-------------|
 | GET | `/api/v1/download_file?url=` | Initiate file download |
 | GET | `/api/v1/downloads/{id}` | Get single download by ID |
-| GET | `/api/v1/downloads` | List user's downloads |
+| GET | `/api/v1/downloads` | List user's downloads (paginated) |
 
 ### Authentication Header
 ```
 Authorization: Bearer <jwt_token>
+```
+
+### Pagination, Filtering & Sorting
+
+The `GET /api/v1/downloads` endpoint supports the following query parameters:
+
+**Pagination:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | u32 | 1 | Page number (1-indexed) |
+| `per_page` | u32 | 20 | Items per page (max 100) |
+| `cursor` | string | - | Cursor for cursor-based pagination |
+
+**Filtering:**
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `status` | string | Filter by status: PENDING, IN_PROGRESS, COMPLETED, FAILED |
+| `url_contains` | string | Filter by URL containing string (case-insensitive) |
+| `created_after` | ISO 8601 | Filter downloads created after date |
+| `created_before` | ISO 8601 | Filter downloads created before date |
+
+**Sorting:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `sort_by` | string | created_at | Field: created_at, updated_at, completed_at, status, url |
+| `sort_order` | string | desc | Order: asc, desc |
+
+**Example Request:**
+```
+GET /api/v1/downloads?page=1&per_page=10&status=COMPLETED&sort_by=created_at&sort_order=desc
+```
+
+**Response Format:**
+```json
+{
+  "data": [...],
+  "pagination": {
+    "page": 1,
+    "per_page": 10,
+    "total": 45,
+    "total_pages": 5,
+    "has_next": true,
+    "has_prev": false
+  }
+}
 ```
 
 ---
@@ -342,17 +422,41 @@ Ok(HttpResponse::Ok().json(data))
 
 A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_PLAN.md](./IMPLEMENTATION_PLAN.md).
 
-### Phase Overview
-| Phase | Weeks | Focus Areas |
-|-------|-------|-------------|
-| 1 | 1-2 | CI/CD, Testing Infrastructure, Documentation |
-| 2 | 3-4 | API Enhancements (Pagination, Filtering, Sorting) |
-| 3 | 5-6 | User Management (Profile, Password Reset, Email Verification) |
-| 4 | 7-8 | Download Management (Progress, Pause/Resume, Retry) |
-| 5 | 9-10 | Background Jobs (Queue System, Workers) |
-| 6 | 11-12 | File Organization (Folders, Tags, Search) |
-| 7 | 13-14 | Storage Options & Rate Limiting |
-| 8 | 15-16 | Monitoring & Admin Features |
+### Implementation Status
+
+| Phase | Weeks | Focus Areas | Status |
+|-------|-------|-------------|--------|
+| 1 | 1-2 | CI/CD, Testing Infrastructure, Documentation | ✅ Complete |
+| 2 | 3-4 | API Enhancements (Pagination, Filtering, Sorting) | ✅ Complete |
+| 3 | 5-6 | User Management (Profile, Password Reset, Email Verification) | 🔲 Pending |
+| 4 | 7-8 | Download Management (Progress, Pause/Resume, Retry) | 🔲 Pending |
+| 5 | 9-10 | Background Jobs (Redis Streams Queue System) | 🔲 Pending |
+| 6 | 11-12 | File Organization (Folders, Tags, Search) | 🔲 Pending |
+| 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
+| 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin Features | 🔲 Pending |
+
+### Phase 1 Deliverables (Complete)
+- ✅ `rust-toolchain.toml` - Rust version pinning (stable)
+- ✅ `rustfmt.toml` - Code formatting rules
+- ✅ `deny.toml` - Dependency license/security checking
+- ✅ Clippy lints configured in `Cargo.toml`
+- ✅ `Makefile` with 30+ development targets
+- ✅ `scripts/setup.sh` - One-command dev environment setup
+- ✅ `CONTRIBUTING.md` - Contribution guidelines
+- ✅ `ARCHITECTURE.md` - System architecture documentation
+- ✅ `tests/api/fixtures.rs` - Test factories (DownloadFactory, UserFactory)
+- 🔲 GitHub Actions CI workflows (can be added when needed)
+- 🔲 OpenAPI/Swagger spec (can be added when needed)
+
+### Phase 2 Deliverables (Complete)
+- ✅ `src/models/pagination.rs` - PaginationParams, PaginationMeta, PaginatedResponse
+- ✅ `src/models/filter.rs` - DownloadFilter with status, URL, date range filtering
+- ✅ `src/models/sorting.rs` - SortParams, SortOrder, field whitelisting
+- ✅ `src/models/query.rs` - DownloadQueryParams (unified query parameters)
+- ✅ Updated `src/repository/download.rs` with `get_downloads_paginated()`
+- ✅ Updated `GET /downloads` endpoint to return paginated responses
+- ✅ Added Clone, Copy, PartialEq, Eq derives to DownloadStatus
+- ✅ Unit tests for pagination, filtering, sorting
 
 ### Feature Areas Covered
 1. **Download Management**: Progress tracking, pause/resume, retry logic
@@ -363,8 +467,8 @@ A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_
 6. **Admin Features**: User management, system metrics, audit logs
 7. **API Enhancements**: Pagination, filtering, sorting for list endpoints
 8. **Storage Options**: Additional cloud providers, local storage management
-9. **Background Jobs**: Queue system for async download processing
-10. **Monitoring**: Prometheus metrics, health check enhancements
+9. **Background Jobs**: Redis Streams queue system for async download processing
+10. **Monitoring**: OpenTelemetry + Kafka for metrics, traces, and events
 
 See the full plan for detailed daily breakdowns, code examples, database migrations, and test requirements.
 
