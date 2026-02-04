@@ -2,10 +2,21 @@ use crate::clients::get_s3_client;
 use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
 use crate::middlewares::reject_anonymous_users;
 use crate::routes::{
+    // Auth & User
     cancel_download, change_password, delete_account, download, forgot_password, get_current_user,
     get_download, get_downloads, get_progress, health_check, login, pause_download, register,
     resend_verification, reset_password, resume_download, retry_download, update_profile,
     verify_email,
+    // Folders
+    create_folder, list_root_folders, get_folder, get_folder_subfolders, update_folder,
+    move_folder, delete_folder,
+    // Tags
+    create_tag, list_tags, get_tag, update_tag, delete_tag, add_download_tags,
+    remove_download_tag, get_tags_for_download,
+    // Bulk operations
+    bulk_move, bulk_tag, bulk_untag, bulk_delete,
+    // Search
+    search_handler,
 };
 use crate::utils::error_handler;
 use actix_session::{SessionMiddleware, storage::RedisSessionStore};
@@ -123,7 +134,32 @@ async fn run(
                             .route("/downloads/{id}/pause", web::post().to(pause_download))
                             .route("/downloads/{id}/resume", web::post().to(resume_download))
                             .route("/downloads/{id}/retry", web::post().to(retry_download))
-                            .route("/downloads/{id}/cancel", web::post().to(cancel_download)),
+                            .route("/downloads/{id}/cancel", web::post().to(cancel_download))
+                            // Download tags
+                            .route("/downloads/{id}/tags", web::get().to(get_tags_for_download))
+                            .route("/downloads/{id}/tags", web::post().to(add_download_tags))
+                            .route("/downloads/{download_id}/tags/{tag_id}", web::delete().to(remove_download_tag))
+                            // Folders
+                            .route("/folders", web::post().to(create_folder))
+                            .route("/folders", web::get().to(list_root_folders))
+                            .route("/folders/{id}", web::get().to(get_folder))
+                            .route("/folders/{id}", web::patch().to(update_folder))
+                            .route("/folders/{id}", web::delete().to(delete_folder))
+                            .route("/folders/{id}/subfolders", web::get().to(get_folder_subfolders))
+                            .route("/folders/{id}/move", web::post().to(move_folder))
+                            // Tags
+                            .route("/tags", web::post().to(create_tag))
+                            .route("/tags", web::get().to(list_tags))
+                            .route("/tags/{id}", web::get().to(get_tag))
+                            .route("/tags/{id}", web::patch().to(update_tag))
+                            .route("/tags/{id}", web::delete().to(delete_tag))
+                            // Bulk operations
+                            .route("/downloads/bulk/move", web::post().to(bulk_move))
+                            .route("/downloads/bulk/tag", web::post().to(bulk_tag))
+                            .route("/downloads/bulk/untag", web::post().to(bulk_untag))
+                            .route("/downloads/bulk/delete", web::post().to(bulk_delete))
+                            // Search
+                            .route("/search", web::get().to(search_handler)),
                     ),
             )
             .app_data(db_pool.clone())

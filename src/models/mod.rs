@@ -1,15 +1,23 @@
+mod bulk;
 mod download;
 pub mod filter;
+mod folder;
 pub mod pagination;
 pub mod query;
+mod search;
 pub mod sorting;
+mod tag;
 pub mod token;
 mod user;
 
+pub use bulk::*;
 pub use download::*;
 pub use filter::DownloadFilter;
+pub use folder::*;
 pub use pagination::{PaginatedResponse, PaginationMeta, PaginationParams};
 pub use query::DownloadQueryParams;
+pub use search::*;
 pub use sorting::{SortOrder, SortParams};
+pub use tag::*;
 pub use token::{Token, TokenType};
 pub use user::*;
