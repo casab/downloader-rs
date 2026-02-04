@@ -52,6 +52,8 @@ jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
 hex = "0.4.3"
 sha2 = "0.10.9"
 base64 = "0.22.1"
+redis = { version = "1.0.3", features = ["tokio-comp", "streams"] }
+async-trait = "0.1.89"
 
 [dependencies.sqlx]
 version = "0.8.6"

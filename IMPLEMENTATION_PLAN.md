@@ -8,12 +8,12 @@
 | 2 | 3-4 | API Enhancements (Pagination, Filtering, Sorting) | ✅ **COMPLETE** |
 | 3 | 5-6 | User Management | ✅ **COMPLETE** |
 | 4 | 7-8 | Download Management | ✅ **COMPLETE** |
-| 5 | 9-10 | Background Jobs (Redis Streams) | 🔲 Pending |
+| 5 | 9-10 | Background Jobs (Redis Streams) | ✅ **COMPLETE** |
 | 6 | 11-12 | File Organization | 🔲 Pending |
 | 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
 | 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin | 🔲 Pending |
 
-*Last updated: Phase 4 completed*
+*Last updated: Phase 5 completed*
 
 ---
 
@@ -1456,14 +1456,14 @@ impl Worker {
 ```
 
 #### Deliverables - Week 10
-- [ ] Redis Streams job queue fully operational
-- [ ] Worker pool with consumer groups
-- [ ] Downloads processed via job queue
-- [ ] Real-time progress via Redis Pub/Sub
-- [ ] Job history in PostgreSQL
-- [ ] Priority-based processing
-- [ ] Dead letter queue handling
-- [ ] Comprehensive test coverage
+- [x] Redis Streams job queue fully operational
+- [x] Worker pool with consumer groups
+- [x] Downloads processed via job queue
+- [x] Real-time progress via Redis Pub/Sub
+- [x] Job history in PostgreSQL
+- [x] Priority-based processing
+- [x] Dead letter queue handling
+- [x] Comprehensive test coverage
 
 ---
 

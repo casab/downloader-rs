@@ -2,6 +2,7 @@ pub mod api;
 pub mod cli;
 pub mod clients;
 pub mod configuration;
+pub mod jobs;
 pub mod middlewares;
 pub mod models;
 pub mod repository;
