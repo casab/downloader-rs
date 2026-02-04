@@ -35,21 +35,25 @@ downloader-rs/
 │   │   └── mod.rs           # Clap CLI argument definitions
 │   ├── models/
 │   │   ├── mod.rs
-│   │   ├── user.rs          # User struct with SecretString password
-│   │   ├── download.rs      # Download struct with status enum
+│   │   ├── user.rs          # User/UserRow/UserProfile with profile fields
+│   │   ├── download.rs      # Download/DownloadRow with state machine, progress tracking
+│   │   ├── token.rs         # Token for password reset/email verification
 │   │   ├── pagination.rs    # PaginationParams, PaginationMeta, PaginatedResponse
 │   │   ├── filter.rs        # DownloadFilter for query filtering
 │   │   ├── sorting.rs       # SortParams, SortOrder, field whitelists
 │   │   └── query.rs         # DownloadQueryParams (combined query params)
 │   ├── routes/
 │   │   ├── mod.rs
-│   │   ├── auth.rs          # POST /auth (login), POST /register
-│   │   ├── download.rs      # Download endpoints (protected)
+│   │   ├── auth.rs          # Login, register, password reset, email verification
+│   │   ├── user.rs          # User profile endpoints (GET/PATCH/DELETE /me)
+│   │   ├── download.rs      # Download endpoints with control (pause/resume/retry/cancel)
 │   │   └── health_check.rs  # GET /health_check
 │   ├── repository/
 │   │   ├── mod.rs
-│   │   ├── auth.rs          # User CRUD operations
-│   │   └── download.rs      # Download CRUD with pagination support
+│   │   ├── auth.rs          # User authentication operations
+│   │   ├── user.rs          # User profile CRUD operations
+│   │   ├── token.rs         # Token management for reset/verification
+│   │   └── download.rs      # Download CRUD with pagination and control
 │   ├── middlewares/
 │   │   ├── mod.rs
 │   │   └── auth.rs          # reject_anonymous_users middleware
@@ -61,6 +65,7 @@ downloader-rs/
 │       ├── api.rs           # Error response helpers (e400, e401, e404, e500)
 │       ├── auth.rs          # Password hashing/verification
 │       ├── errors.rs        # Custom error types (AuthError, LoginError)
+│       ├── token.rs         # Token generation, hashing, verification
 │       └── file.rs          # File download utilities
 ├── migrations/              # SQLx migrations (up/down SQL files)
 ├── configuration/
@@ -269,13 +274,26 @@ cargo sqlx prepare
 | POST | `/api/v1/auth` | Login with email/password, returns JWT |
 | POST | `/api/v1/register` | Register new user, returns JWT |
 | GET | `/api/v1/health_check` | Health check (200 OK) |
+| POST | `/api/v1/auth/forgot-password` | Request password reset token |
+| POST | `/api/v1/auth/reset-password` | Reset password with token |
+| POST | `/api/v1/auth/verify-email` | Verify email with token |
 
 ### Protected Endpoints (require auth)
 | Method | Path | Description |
 |--------|------|-------------|
+| GET | `/api/v1/me` | Get current user profile |
+| PATCH | `/api/v1/me` | Update user profile |
+| DELETE | `/api/v1/me` | Delete user account (soft delete) |
+| POST | `/api/v1/me/password` | Change password |
+| POST | `/api/v1/auth/resend-verification` | Resend email verification |
 | GET | `/api/v1/download_file?url=` | Initiate file download |
 | GET | `/api/v1/downloads/{id}` | Get single download by ID |
 | GET | `/api/v1/downloads` | List user's downloads (paginated) |
+| GET | `/api/v1/downloads/{id}/progress` | Get download progress |
+| POST | `/api/v1/downloads/{id}/pause` | Pause download |
+| POST | `/api/v1/downloads/{id}/resume` | Resume download |
+| POST | `/api/v1/downloads/{id}/retry` | Retry failed download |
+| POST | `/api/v1/downloads/{id}/cancel` | Cancel download |
 
 ### Authentication Header
 ```
@@ -428,8 +446,8 @@ A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_
 |-------|-------|-------------|--------|
 | 1 | 1-2 | CI/CD, Testing Infrastructure, Documentation | ✅ Complete |
 | 2 | 3-4 | API Enhancements (Pagination, Filtering, Sorting) | ✅ Complete |
-| 3 | 5-6 | User Management (Profile, Password Reset, Email Verification) | 🔲 Pending |
-| 4 | 7-8 | Download Management (Progress, Pause/Resume, Retry) | 🔲 Pending |
+| 3 | 5-6 | User Management (Profile, Password Reset, Email Verification) | ✅ Complete |
+| 4 | 7-8 | Download Management (Progress, Pause/Resume, Retry) | ✅ Complete |
 | 5 | 9-10 | Background Jobs (Redis Streams Queue System) | 🔲 Pending |
 | 6 | 11-12 | File Organization (Folders, Tags, Search) | 🔲 Pending |
 | 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
@@ -457,6 +475,25 @@ A comprehensive **16-week implementation plan** is available in [IMPLEMENTATION_
 - ✅ Updated `GET /downloads` endpoint to return paginated responses
 - ✅ Added Clone, Copy, PartialEq, Eq derives to DownloadStatus
 - ✅ Unit tests for pagination, filtering, sorting
+
+### Phase 3 Deliverables (Complete)
+- ✅ `src/models/user.rs` - Enhanced User model with profile fields (display_name, avatar_url, bio, timezone)
+- ✅ `src/models/token.rs` - Token model for password reset and email verification
+- ✅ `src/repository/user.rs` - User profile CRUD operations
+- ✅ `src/repository/token.rs` - Token management (create, validate, invalidate)
+- ✅ `src/routes/user.rs` - Profile endpoints (GET/PATCH /me, DELETE /me, POST /me/password)
+- ✅ `src/routes/auth.rs` - Password reset and email verification endpoints
+- ✅ `src/utils/token.rs` - Token generation and hashing utilities
+- ✅ Migrations for user profile fields and tokens table
+
+### Phase 4 Deliverables (Complete)
+- ✅ Enhanced Download model with progress tracking fields (bytes_downloaded, total_bytes, etc.)
+- ✅ Download state machine with Paused and Cancelled states
+- ✅ `DownloadProgress` model with speed/ETA calculations
+- ✅ `RetryPolicy` with configurable exponential backoff
+- ✅ Download control endpoints (progress, pause, resume, retry, cancel)
+- ✅ Updated repository with pause/resume/retry/cancel functions
+- ✅ Migration for enhanced download fields
 
 ### Feature Areas Covered
 1. **Download Management**: Progress tracking, pause/resume, retry logic
