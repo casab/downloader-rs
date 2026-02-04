@@ -8,6 +8,7 @@ mod search;
 pub mod sorting;
 mod tag;
 pub mod token;
+mod usage;
 mod user;
 
 pub use bulk::*;
@@ -20,4 +21,5 @@ pub use search::*;
 pub use sorting::{SortOrder, SortParams};
 pub use tag::*;
 pub use token::{Token, TokenType};
+pub use usage::*;
 pub use user::*;

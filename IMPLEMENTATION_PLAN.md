@@ -9,11 +9,11 @@
 | 3 | 5-6 | User Management | ✅ **COMPLETE** |
 | 4 | 7-8 | Download Management | ✅ **COMPLETE** |
 | 5 | 9-10 | Background Jobs (Redis Streams) | ✅ **COMPLETE** |
-| 6 | 11-12 | File Organization | 🔲 Pending |
-| 7 | 13-14 | Storage Options & Rate Limiting | 🔲 Pending |
+| 6 | 11-12 | File Organization | ✅ **COMPLETE** |
+| 7 | 13-14 | Storage Options & Rate Limiting | ✅ **COMPLETE** |
 | 8 | 15-16 | Monitoring (OpenTelemetry, Kafka) & Admin | 🔲 Pending |
 
-*Last updated: Phase 5 completed*
+*Last updated: Phase 7 completed*
 
 ---
 

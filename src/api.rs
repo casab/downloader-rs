@@ -17,6 +17,8 @@ use crate::routes::{
     bulk_move, bulk_tag, bulk_untag, bulk_delete,
     // Search
     search_handler,
+    // Usage
+    get_usage,
 };
 use crate::utils::error_handler;
 use actix_session::{SessionMiddleware, storage::RedisSessionStore};
@@ -159,7 +161,9 @@ async fn run(
                             .route("/downloads/bulk/untag", web::post().to(bulk_untag))
                             .route("/downloads/bulk/delete", web::post().to(bulk_delete))
                             // Search
-                            .route("/search", web::get().to(search_handler)),
+                            .route("/search", web::get().to(search_handler))
+                            // Usage
+                            .route("/me/usage", web::get().to(get_usage)),
                     ),
             )
             .app_data(db_pool.clone())

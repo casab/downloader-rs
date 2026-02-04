@@ -1,3 +1,4 @@
+use crate::clients::StorageConfig;
 use secrecy::{ExposeSecret, SecretString};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::ConnectOptions;
@@ -9,6 +10,8 @@ pub struct Settings {
     pub application: ApplicationSettings,
     pub redis_uri: SecretString,
     pub s3: Option<S3Settings>,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
