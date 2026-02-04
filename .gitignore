@@ -31,3 +31,4 @@ coverage.xml
 # Test artifacts
 *.zip
 test.zip
+dump.rdb
