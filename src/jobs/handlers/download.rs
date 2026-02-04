@@ -66,9 +66,11 @@ impl DownloadJobHandler {
         // Perform the download
         let file_path = download_file(&payload.url, Some((*self.s3_client).clone())).await?;
 
-        // Get file size
-        let metadata = tokio::fs::metadata(&file_path).await?;
-        let total_bytes = metadata.len() as i64;
+        // Get file size (may not exist locally when using S3 storage)
+        let total_bytes = match tokio::fs::metadata(&file_path).await {
+            Ok(metadata) => metadata.len() as i64,
+            Err(_) => 0, // File is on remote storage, size unavailable from local FS
+        };
 
         // Update progress in database
         update_download_progress(payload.download_id, total_bytes, Some(total_bytes), &self.pool).await?;

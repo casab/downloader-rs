@@ -80,9 +80,16 @@ pub async fn register(
             session.renew();
             session.insert_user_id(user_id).map_err(e401)?;
             let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
-            Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
+            Ok(HttpResponse::Created().json(AuthResponse { user_id, jwt }))
         },
-        Err(e) => Err(e500(e)),
+        Err(e) => {
+            let err_str = e.to_string();
+            if err_str.contains("duplicate key") || err_str.contains("unique constraint") {
+                Err(e400("An account with this email already exists"))
+            } else {
+                Err(e500(e))
+            }
+        },
     }
 }
 

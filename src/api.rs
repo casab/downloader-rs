@@ -100,6 +100,7 @@ async fn run(
     } else {
         None
     });
+    let app_metrics = web::Data::new(crate::metrics::AppMetrics::new());
 
     let server = HttpServer::new(move || {
         App::new()
@@ -190,6 +191,7 @@ async fn run(
             .app_data(s3_client.clone())
             .app_data(base_url.clone())
             .app_data(jwt_settings.clone())
+            .app_data(app_metrics.clone())
             .app_data(web::JsonConfig::default().error_handler(error_handler))
             .app_data(web::PathConfig::default().error_handler(error_handler))
             .app_data(web::QueryConfig::default().error_handler(error_handler))

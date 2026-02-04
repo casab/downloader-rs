@@ -153,7 +153,7 @@ impl Worker {
             );
             if let Err(e) = self
                 .queue
-                .fail(&stream_key, &message_id, "No handler registered")
+                .fail(&job, "No handler registered")
                 .await
             {
                 tracing::error!(error = %e, "Failed to mark job as failed");
@@ -210,7 +210,7 @@ impl Worker {
                 // Max retries exceeded, move to dead letter queue
                 if let Err(fail_err) = self
                     .queue
-                    .fail(&stream_key, &message_id, &e.to_string())
+                    .fail(&job, &e.to_string())
                     .await
                 {
                     tracing::error!(error = %fail_err, "Failed to move job to dead letter queue");

@@ -24,7 +24,7 @@ pub trait JobQueue: Send + Sync {
     async fn acknowledge(&self, stream_key: &str, message_id: &str) -> Result<()>;
 
     /// Mark a job as failed (moves to dead letter queue after max retries).
-    async fn fail(&self, stream_key: &str, message_id: &str, error: &str) -> Result<()>;
+    async fn fail(&self, job: &Job, error: &str) -> Result<()>;
 }
 
 /// Redis Streams-based job queue.
@@ -241,6 +241,7 @@ impl RedisStreamsQueue {
         let payload_str = get_string("payload")?;
         let priority: i32 = get_string("priority")?.parse().unwrap_or(0);
         let attempts: i32 = get_string("attempts").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
+        let max_retries: i32 = get_string("max_retries").ok().and_then(|s| s.parse().ok()).unwrap_or(self.config.max_retries);
         let created_at_ms: i64 = get_string("created_at")?.parse()?;
 
         let job_type = match job_type_str.as_str() {
@@ -266,7 +267,7 @@ impl RedisStreamsQueue {
             payload,
             priority,
             attempts,
-            max_retries: self.config.max_retries,
+            max_retries,
             stream_key: Some(stream_key.to_string()),
             message_id: Some(message_id.to_string()),
             created_at,
@@ -307,6 +308,16 @@ impl RedisStreamsQueue {
                             _ => continue,
                         };
 
+                        // Get delivery count (entry[3]) to track actual retry attempts
+                        let delivery_count = if entry.len() >= 4 {
+                            match &entry[3] {
+                                redis::Value::Int(n) => *n as i32,
+                                _ => 0,
+                            }
+                        } else {
+                            0
+                        };
+
                         if idle_time > self.config.pending_timeout_ms {
                             // XCLAIM to take ownership
                             let claimed: redis::Value = redis::cmd("XCLAIM")
@@ -323,10 +334,14 @@ impl RedisStreamsQueue {
                                     if msg.len() >= 2 {
                                         let fields = self.parse_stream_fields(&msg[1])?;
                                         tracing::warn!(
+                                            delivery_count = delivery_count,
                                             "Claimed pending message {} from dead consumer",
                                             message_id
                                         );
-                                        return Ok(Some(self.parse_job(&stream_key, &message_id, &fields)?));
+                                        let mut job = self.parse_job(&stream_key, &message_id, &fields)?;
+                                        // Use delivery count as actual attempts (Redis tracks this natively)
+                                        job.attempts = delivery_count;
+                                        return Ok(Some(job));
                                     }
                                 }
                             }
@@ -395,6 +410,8 @@ impl JobQueue for RedisStreamsQueue {
             .arg(job.priority)
             .arg("attempts")
             .arg(job.attempts)
+            .arg("max_retries")
+            .arg(job.max_retries)
             .arg("created_at")
             .arg(job.created_at.timestamp_millis());
 
@@ -404,8 +421,14 @@ impl JobQueue for RedisStreamsQueue {
 
         let message_id: String = cmd.query_async(&mut conn).await?;
 
-        // Record in PostgreSQL history
-        self.record_job_created(&job, &message_id).await?;
+        // Record in PostgreSQL history (best-effort — job is already in Redis)
+        if let Err(e) = self.record_job_created(&job, &message_id).await {
+            tracing::warn!(
+                job_id = %job.id,
+                error = %e,
+                "Failed to record job history in PostgreSQL"
+            );
+        }
 
         tracing::info!(
             job_id = %job.id,
@@ -488,17 +511,32 @@ impl JobQueue for RedisStreamsQueue {
         Ok(())
     }
 
-    async fn fail(&self, stream_key: &str, message_id: &str, error: &str) -> Result<()> {
+    async fn fail(&self, job: &Job, error: &str) -> Result<()> {
+        let stream_key = job.stream_key.as_deref().unwrap_or("");
+        let message_id = job.message_id.as_deref().unwrap_or("");
         let mut conn = self.get_connection().await?;
         let dead_letter_key = self.config.dead_letter_key();
 
-        // Add to dead letter stream with error info
-        let _: String = redis::cmd("XADD")
-            .arg(&dead_letter_key)
+        // Serialize the full job payload for the DLQ
+        let payload = serde_json::to_string(&job.payload).unwrap_or_default();
+
+        // Add to dead letter stream with full job data
+        let mut cmd = redis::cmd("XADD");
+        cmd.arg(&dead_letter_key)
             .arg("MAXLEN")
             .arg("~")
             .arg(self.config.max_stream_length)
             .arg("*")
+            .arg("id")
+            .arg(job.id.to_string())
+            .arg("type")
+            .arg(job.job_type.as_str())
+            .arg("payload")
+            .arg(&payload)
+            .arg("attempts")
+            .arg(job.attempts)
+            .arg("max_retries")
+            .arg(job.max_retries)
             .arg("original_stream")
             .arg(stream_key)
             .arg("original_id")
@@ -506,14 +544,19 @@ impl JobQueue for RedisStreamsQueue {
             .arg("error")
             .arg(error)
             .arg("failed_at")
-            .arg(Utc::now().timestamp_millis())
-            .query_async(&mut conn)
-            .await?;
+            .arg(Utc::now().timestamp_millis());
+
+        if let Some(user_id) = job.user_id {
+            cmd.arg("user_id").arg(user_id.to_string());
+        }
+
+        let _: String = cmd.query_async(&mut conn).await?;
 
         // Acknowledge original message to remove from pending
         self.acknowledge(stream_key, message_id).await?;
 
         tracing::warn!(
+            job_id = %job.id,
             stream_key = %stream_key,
             message_id = %message_id,
             error = %error,

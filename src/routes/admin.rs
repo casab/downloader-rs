@@ -26,7 +26,7 @@ pub async fn admin_list_users(
     pool: web::Data<PgPool>,
     query: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let limit = query.per_page.unwrap_or(50).min(100);
+    let limit = query.per_page.unwrap_or(50).clamp(1, 100);
     let page = query.page.unwrap_or(1).max(1);
     let offset = (page - 1) * limit;
 
@@ -91,7 +91,7 @@ pub async fn admin_update_user(
         action: "update".to_string(),
         resource_type: "user".to_string(),
         resource_id: Some(target_user_id),
-        old_values: old_user.map(|u| serde_json::json!({"is_admin": u.is_admin, "email_verified": u.email_verified})),
+        old_values: old_user.map(|u| serde_json::json!({"is_admin": u.is_admin, "email_verified_at": u.email_verified_at})),
         new_values: Some(serde_json::to_value(&*body).unwrap_or_default()),
         ip_address: req.peer_addr().map(|a| a.ip().to_string()),
         user_agent: req
@@ -199,7 +199,7 @@ pub async fn admin_list_downloads(
     pool: web::Data<PgPool>,
     query: web::Query<PaginationQuery>,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let limit = query.per_page.unwrap_or(50).min(100);
+    let limit = query.per_page.unwrap_or(50).clamp(1, 100);
     let page = query.page.unwrap_or(1).max(1);
     let offset = (page - 1) * limit;
 
@@ -228,8 +228,10 @@ pub async fn admin_list_downloads(
 }
 
 /// GET /metrics - Prometheus metrics endpoint.
-pub async fn metrics_handler() -> HttpResponse {
-    let registry = prometheus_client::registry::Registry::default();
+pub async fn metrics_handler(
+    metrics: web::Data<crate::metrics::AppMetrics>,
+) -> HttpResponse {
+    let registry = metrics.prometheus_registry.read().await;
     let output = crate::metrics::encode_prometheus_metrics(&registry);
 
     HttpResponse::Ok()

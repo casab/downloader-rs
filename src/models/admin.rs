@@ -47,9 +47,9 @@ pub struct JobStats {
 pub struct AdminUserRow {
     pub id: uuid::Uuid,
     pub email: String,
-    pub name: String,
+    pub display_name: Option<String>,
     pub is_admin: bool,
-    pub email_verified: bool,
+    pub email_verified_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

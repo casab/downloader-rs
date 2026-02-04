@@ -198,7 +198,9 @@ pub async fn move_folder(
 
     // Calculate new path
     let new_path = if let Some(pid) = new_parent_id {
-        let parent = get_user_folder_by_id(pid, user_id, pool).await?.unwrap();
+        let parent = get_user_folder_by_id(pid, user_id, pool)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("Target parent folder not found"))?;
         format!("{}/{}", parent.path, folder.name)
     } else {
         format!("/{}", folder.name)

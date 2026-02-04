@@ -29,7 +29,7 @@ pub async fn download(
 
     match download_file(file_link, s3_client.get_ref().clone()).await {
         Ok(file_path) => {
-            update_download_status(
+            let updated = update_download_status(
                 download.id,
                 DownloadStatus::Completed,
                 Some(file_path),
@@ -38,7 +38,7 @@ pub async fn download(
             )
             .await
             .map_err(e500)?;
-            return Ok(HttpResponse::Ok().finish());
+            return Ok(HttpResponse::Ok().json(updated));
         },
         Err(err) => {
             tracing::error!(error = ?err, download_id = download.id.to_string(), "Failed to download the file");

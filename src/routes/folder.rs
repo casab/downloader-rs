@@ -137,7 +137,7 @@ pub async fn update_folder(
         get_user_folder_by_id(folder_id, &user_id, &pool)
             .await
             .map_err(e500)?
-            .unwrap()
+            .ok_or_else(|| e404("Folder not found"))?
     };
 
     Ok(HttpResponse::Ok().json(folder))

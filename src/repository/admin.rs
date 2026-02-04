@@ -31,7 +31,7 @@ pub async fn list_all_users(
 ) -> Result<Vec<AdminUserRow>> {
     let users = sqlx::query_as::<_, AdminUserRow>(
         r#"
-        SELECT id, email, name, is_admin, email_verified, created_at, updated_at
+        SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
         FROM users
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
@@ -65,7 +65,7 @@ pub async fn get_user_by_id_admin(
 ) -> Result<Option<AdminUserRow>> {
     let user = sqlx::query_as::<_, AdminUserRow>(
         r#"
-        SELECT id, email, name, is_admin, email_verified, created_at, updated_at
+        SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
         FROM users WHERE id = $1
         "#,
     )
@@ -93,7 +93,7 @@ pub async fn admin_update_user(
     }
     if req.email_verified.is_some() {
         param_count += 1;
-        query.push_str(&format!(", email_verified = ${param_count}"));
+        query.push_str(&format!(", email_verified_at = CASE WHEN ${param_count} THEN NOW() ELSE NULL END"));
     }
 
     param_count += 1;
@@ -180,7 +180,7 @@ pub async fn get_admin_stats(pool: &PgPool) -> Result<AdminStats> {
     .unwrap_or(0);
 
     let in_progress_downloads = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM downloads WHERE status = 'DOWNLOADING'",
+        "SELECT COUNT(*) FROM downloads WHERE status = 'IN_PROGRESS'",
     )
     .fetch_one(pool)
     .await
