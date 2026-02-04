@@ -327,4 +327,121 @@ mod tests {
         job.increment_attempts();
         assert!(!job.can_retry());
     }
+
+    #[test]
+    fn test_job_with_user_id() {
+        let user_id = Uuid::new_v4();
+        let payload = CleanupPayload {
+            cleanup_type: "test".to_string(),
+            params: None,
+        };
+
+        let job = Job::new(JobType::Cleanup, &payload)
+            .unwrap()
+            .with_user_id(user_id);
+
+        assert_eq!(job.user_id, Some(user_id));
+    }
+
+    #[test]
+    fn test_job_status_display() {
+        assert_eq!(JobStatus::Pending.to_string(), "pending");
+        assert_eq!(JobStatus::Running.to_string(), "running");
+        assert_eq!(JobStatus::Completed.to_string(), "completed");
+        assert_eq!(JobStatus::Failed.to_string(), "failed");
+        assert_eq!(JobStatus::Cancelled.to_string(), "cancelled");
+    }
+
+    #[test]
+    fn test_download_payload_serialization() {
+        let payload = DownloadPayload {
+            download_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            url: "https://example.com/file.zip".to_string(),
+            filename: Some("myfile.zip".to_string()),
+            priority: 5,
+        };
+
+        let json = serde_json::to_string(&payload).unwrap();
+        let deserialized: DownloadPayload = serde_json::from_str(&json).unwrap();
+
+        assert_eq!(payload.url, deserialized.url);
+        assert_eq!(payload.filename, deserialized.filename);
+        assert_eq!(payload.priority, deserialized.priority);
+    }
+
+    #[test]
+    fn test_email_payload() {
+        let payload = EmailPayload {
+            to: "user@example.com".to_string(),
+            subject: "Test Subject".to_string(),
+            body: "<h1>Hello</h1>".to_string(),
+            user_id: Some(Uuid::new_v4()),
+        };
+
+        let job = Job::new(JobType::Email, &payload).unwrap();
+        assert_eq!(job.job_type, JobType::Email);
+
+        // Verify payload can be deserialized
+        let parsed: EmailPayload = serde_json::from_value(job.payload).unwrap();
+        assert_eq!(parsed.to, "user@example.com");
+    }
+
+    #[test]
+    fn test_webhook_payload() {
+        let mut headers = std::collections::HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer token".to_string());
+
+        let payload = WebhookPayload {
+            url: "https://webhook.example.com/notify".to_string(),
+            method: "POST".to_string(),
+            headers: Some(headers),
+            body: Some(serde_json::json!({"event": "download_complete"})),
+            user_id: None,
+        };
+
+        let job = Job::new(JobType::Webhook, &payload).unwrap();
+        assert_eq!(job.job_type, JobType::Webhook);
+    }
+
+    #[test]
+    fn test_notification_payload() {
+        let payload = NotificationPayload {
+            user_id: Uuid::new_v4(),
+            title: "Download Complete".to_string(),
+            message: "Your file has been downloaded".to_string(),
+            notification_type: "download".to_string(),
+            data: Some(serde_json::json!({"download_id": "123"})),
+        };
+
+        let job = Job::new(JobType::Notification, &payload).unwrap();
+        assert_eq!(job.job_type, JobType::Notification);
+    }
+
+    #[test]
+    fn test_job_result_creation() {
+        let result = JobResult::new(serde_json::json!({
+            "file_path": "/tmp/file.zip",
+            "size": 1024
+        }))
+        .unwrap();
+
+        assert!(result.data.get("file_path").is_some());
+        assert!(result.data.get("size").is_some());
+    }
+
+    #[test]
+    fn test_job_result_empty() {
+        let result = JobResult::empty();
+        assert_eq!(result.data, serde_json::Value::Null);
+    }
+
+    #[test]
+    fn test_job_type_display() {
+        assert_eq!(format!("{}", JobType::Download), "download");
+        assert_eq!(format!("{}", JobType::Email), "email");
+        assert_eq!(format!("{}", JobType::Cleanup), "cleanup");
+        assert_eq!(format!("{}", JobType::Notification), "notification");
+        assert_eq!(format!("{}", JobType::Webhook), "webhook");
+    }
 }
