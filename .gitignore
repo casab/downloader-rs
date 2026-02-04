@@ -27,3 +27,7 @@ coverage.xml
 .env
 .envs/*
 !.envs/.local/
+
+# Test artifacts
+*.zip
+test.zip
