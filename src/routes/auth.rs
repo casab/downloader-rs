@@ -1,13 +1,22 @@
 use crate::configuration::JwtSettings;
 use crate::middlewares::auth::create_jwt_token;
-use crate::repository::{create_user, get_stored_credentials};
+use crate::models::{ForgotPasswordRequest, ResetPasswordRequest, TokenType, VerifyEmailRequest};
+use crate::repository::{
+    create_token, create_user, find_valid_token_by_hash, get_stored_credentials, get_user_by_email,
+    get_user_by_id, invalidate_user_tokens, mark_email_verified, mark_token_used,
+    update_password_hash,
+};
 use crate::session_state::TypedSession;
 use crate::telemetry::spawn_blocking_with_tracing;
-use crate::utils::{e401, e500, errors::AuthError, verify_password_hash};
+use crate::utils::{
+    compute_password_hash, e400, e401, e404, e500, errors::AuthError, generate_token, hash_token,
+    verify_password_hash,
+};
 use actix_web::{HttpResponse, web};
 
 use anyhow::{Context, Result};
-use secrecy::SecretString;
+use chrono::Utc;
+use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 
@@ -108,4 +117,178 @@ CWOrkoo7oJBQ/iyh7uJ0LO2aLEfrHwTWllSAxT0zRno"
     user_id
         .ok_or_else(|| anyhow::anyhow!("Unknown email."))
         .map_err(AuthError::InvalidCredentials)
+}
+
+// =============================================================================
+// Password Reset Endpoints
+// =============================================================================
+
+/// POST /api/v1/auth/forgot-password - Request password reset.
+#[tracing::instrument(name = "Request password reset", skip(pool, body))]
+pub async fn forgot_password(
+    pool: web::Data<PgPool>,
+    body: web::Json<ForgotPasswordRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let email = body.into_inner().email;
+
+    // Always return success to prevent email enumeration
+    // But only create token if user exists
+    if let Ok(Some(user)) = get_user_by_email(&email, &pool).await {
+        // Invalidate any existing password reset tokens
+        let _ = invalidate_user_tokens(user.id, TokenType::PasswordReset, &pool).await;
+
+        // Generate new token
+        let token = generate_token();
+        let token_hash = hash_token(&token);
+        let expires_at = Utc::now() + TokenType::PasswordReset.default_expiration();
+
+        // Store token
+        if let Err(e) = create_token(
+            user.id,
+            &token_hash,
+            TokenType::PasswordReset,
+            expires_at,
+            None,
+            &pool,
+        )
+        .await
+        {
+            tracing::error!("Failed to create password reset token: {:?}", e);
+        } else {
+            // In production, send email with reset link containing the token
+            // For now, log the token (REMOVE IN PRODUCTION)
+            tracing::info!(
+                "Password reset token for {}: {} (expires: {})",
+                email,
+                token,
+                expires_at
+            );
+        }
+    }
+
+    // Always return success
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "If an account exists with this email, a password reset link has been sent."
+    })))
+}
+
+/// POST /api/v1/auth/reset-password - Reset password with token.
+#[tracing::instrument(name = "Reset password", skip(pool, body))]
+pub async fn reset_password(
+    pool: web::Data<PgPool>,
+    body: web::Json<ResetPasswordRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let request = body.into_inner();
+
+    // Validate new password
+    if request.new_password.len() < 8 {
+        return Err(e400("Password must be at least 8 characters"));
+    }
+
+    // Find and validate token
+    let token_hash = hash_token(&request.token);
+    let token = find_valid_token_by_hash(&token_hash, TokenType::PasswordReset, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e400("Invalid or expired token"))?;
+
+    // Hash new password
+    let new_password = SecretString::new(request.new_password.into());
+    let new_hash = spawn_blocking_with_tracing(move || compute_password_hash(new_password))
+        .await
+        .map_err(e500)?
+        .map_err(e500)?;
+
+    // Update password
+    update_password_hash(token.user_id, new_hash.expose_secret(), &pool)
+        .await
+        .map_err(e500)?;
+
+    // Mark token as used
+    mark_token_used(token.id, &pool).await.map_err(e500)?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Password has been reset successfully"
+    })))
+}
+
+// =============================================================================
+// Email Verification Endpoints
+// =============================================================================
+
+/// POST /api/v1/auth/verify-email - Verify email with token.
+#[tracing::instrument(name = "Verify email", skip(pool, body))]
+pub async fn verify_email(
+    pool: web::Data<PgPool>,
+    body: web::Json<VerifyEmailRequest>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let token_str = body.into_inner().token;
+
+    // Find and validate token
+    let token_hash = hash_token(&token_str);
+    let token = find_valid_token_by_hash(&token_hash, TokenType::EmailVerification, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e400("Invalid or expired token"))?;
+
+    // Mark email as verified
+    mark_email_verified(token.user_id, &pool)
+        .await
+        .map_err(e500)?;
+
+    // Mark token as used
+    mark_token_used(token.id, &pool).await.map_err(e500)?;
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Email verified successfully"
+    })))
+}
+
+/// POST /api/v1/auth/resend-verification - Resend email verification.
+#[tracing::instrument(name = "Resend email verification", skip(pool))]
+pub async fn resend_verification(
+    pool: web::Data<PgPool>,
+    user_id: web::ReqData<crate::middlewares::UserId>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let user = get_user_by_id(user_id.0, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("User not found"))?;
+
+    if user.is_email_verified() {
+        return Err(e400("Email is already verified"));
+    }
+
+    // Invalidate any existing verification tokens
+    let _ = invalidate_user_tokens(user.id, TokenType::EmailVerification, &pool).await;
+
+    // Generate new token
+    let token = generate_token();
+    let token_hash = hash_token(&token);
+    let expires_at = Utc::now() + TokenType::EmailVerification.default_expiration();
+
+    // Store token
+    create_token(
+        user.id,
+        &token_hash,
+        TokenType::EmailVerification,
+        expires_at,
+        None,
+        &pool,
+    )
+    .await
+    .map_err(e500)?;
+
+    // In production, send email with verification link
+    // For now, log the token (REMOVE IN PRODUCTION)
+    tracing::info!(
+        "Email verification token for {}: {} (expires: {})",
+        user.email,
+        token,
+        expires_at
+    );
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "message": "Verification email has been sent"
+    })))
 }

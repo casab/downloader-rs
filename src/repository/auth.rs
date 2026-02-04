@@ -1,7 +1,9 @@
-use crate::models::User;
+//! Authentication repository for user creation and credential validation.
+
 use crate::telemetry::spawn_blocking_with_tracing;
 use crate::utils::compute_password_hash;
 use secrecy::{ExposeSecret, SecretString};
+use sqlx::Row;
 use uuid::Uuid;
 
 use anyhow::{Context, Result};
@@ -16,19 +18,19 @@ pub async fn create_user(
     let password_hash = spawn_blocking_with_tracing(move || compute_password_hash(password))
         .await?
         .context("Failed to hash password.")?;
-    let user = sqlx::query_as!(
-        User,
+    let user_id = Uuid::new_v4();
+    sqlx::query(
         r#"
-        INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3) returning *;
+        INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)
         "#,
-        Uuid::new_v4(),
-        email,
-        password_hash.expose_secret(),
     )
-    .fetch_one(pool)
+    .bind(user_id)
+    .bind(&email)
+    .bind(password_hash.expose_secret())
+    .execute(pool)
     .await
     .context("Failed to insert user in the database.")?;
-    Ok(user.id)
+    Ok(user_id)
 }
 
 #[tracing::instrument(name = "Get stored credentials", skip(email, pool))]
@@ -36,19 +38,23 @@ pub async fn get_stored_credentials(
     email: &str,
     pool: &PgPool,
 ) -> Result<Option<(uuid::Uuid, SecretString)>, anyhow::Error> {
-    let row = sqlx::query!(
+    let row = sqlx::query(
         r#"
         SELECT id, password_hash
         FROM users
-        WHERE email = $1
+        WHERE email = $1 AND deleted_at IS NULL
         "#,
-        email,
     )
+    .bind(email)
     .fetch_optional(pool)
     .await
-    .context("Failed to perform a query to validate auth credentials.")?
-    .map(|row| (row.id, SecretString::new(row.password_hash.into())));
-    Ok(row)
+    .context("Failed to perform a query to validate auth credentials.")?;
+
+    Ok(row.map(|r| {
+        let id: Uuid = r.get("id");
+        let password_hash: String = r.get("password_hash");
+        (id, SecretString::new(password_hash.into()))
+    }))
 }
 
 #[tracing::instrument(name = "Change password", skip(password, pool))]
@@ -60,15 +66,15 @@ pub async fn change_password(
     let password_hash = spawn_blocking_with_tracing(move || compute_password_hash(password))
         .await?
         .context("Failed to hash password.")?;
-    sqlx::query!(
+    sqlx::query(
         r#"
         UPDATE users
-        SET password_hash = $1
-        WHERE id = $2
+        SET password_hash = $1, updated_at = NOW()
+        WHERE id = $2 AND deleted_at IS NULL
         "#,
-        password_hash.expose_secret(),
-        user_id
     )
+    .bind(password_hash.expose_secret())
+    .bind(user_id)
     .execute(pool)
     .await
     .context("Failed to change user's password in the database.")?;

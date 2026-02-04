@@ -49,6 +49,9 @@ uuid = { version = "1.19.0", features = ["v4", "serde"] }
 wiremock = "0.6.5"
 thiserror = "2.0.17"
 jsonwebtoken = { version = "10.2.0", features = ["aws_lc_rs"] }
+hex = "0.4.3"
+sha2 = "0.10.9"
+base64 = "0.22.1"
 
 [dependencies.sqlx]
 version = "0.8.6"
