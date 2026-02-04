@@ -26,14 +26,26 @@ impl LocalStorageProvider {
         Ok(Self { base_path })
     }
 
-    /// Get the full filesystem path for a storage key.
-    fn key_to_path(&self, key: &str) -> PathBuf {
-        self.base_path.join(key)
+    /// Get the full filesystem path for a storage key, with path traversal protection.
+    fn key_to_path(&self, key: &str) -> Result<PathBuf> {
+        // Reject keys with path traversal components
+        for component in Path::new(key).components() {
+            match component {
+                std::path::Component::ParentDir => {
+                    anyhow::bail!("Invalid storage key: path traversal ('..') not allowed");
+                }
+                std::path::Component::RootDir | std::path::Component::Prefix(_) => {
+                    anyhow::bail!("Invalid storage key: absolute paths not allowed");
+                }
+                _ => {}
+            }
+        }
+        Ok(self.base_path.join(key))
     }
 
     /// Ensure parent directories exist for a key.
     async fn ensure_parent_dirs(&self, key: &str) -> Result<()> {
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
                 .await
@@ -52,7 +64,7 @@ impl LocalStorageProvider {
 impl StorageProvider for LocalStorageProvider {
     async fn upload(&self, key: &str, data: &[u8], _content_type: &str) -> Result<String> {
         self.ensure_parent_dirs(key).await?;
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
 
         fs::write(&path, data)
             .await
@@ -62,7 +74,7 @@ impl StorageProvider for LocalStorageProvider {
     }
 
     async fn download(&self, key: &str) -> Result<Vec<u8>> {
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
 
         fs::read(&path)
             .await
@@ -70,7 +82,7 @@ impl StorageProvider for LocalStorageProvider {
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
 
         if path.exists() {
             fs::remove_file(&path)
@@ -82,18 +94,18 @@ impl StorageProvider for LocalStorageProvider {
     }
 
     async fn exists(&self, key: &str) -> Result<bool> {
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
         Ok(path.exists())
     }
 
     async fn get_url(&self, key: &str, _expires_in: Duration) -> Result<String> {
         // For local storage, return the file path as the URL
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
         Ok(format!("file://{}", path.display()))
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<StorageObject>> {
-        let search_path = self.key_to_path(prefix);
+        let search_path = self.key_to_path(prefix)?;
         let search_dir = if search_path.is_dir() {
             search_path
         } else {
@@ -142,7 +154,7 @@ impl StorageProvider for LocalStorageProvider {
     }
 
     async fn get_metadata(&self, key: &str) -> Result<StorageMetadata> {
-        let path = self.key_to_path(key);
+        let path = self.key_to_path(key)?;
         let metadata = fs::metadata(&path)
             .await
             .with_context(|| format!("Failed to get metadata: {}", path.display()))?;
@@ -259,5 +271,19 @@ mod tests {
     async fn test_provider_name() {
         let (provider, _dir) = create_test_provider().await;
         assert_eq!(provider.provider_name(), "local");
+    }
+
+    #[tokio::test]
+    async fn test_path_traversal_rejected() {
+        let (provider, _dir) = create_test_provider().await;
+
+        let result = provider.upload("../escape.txt", b"bad", "text/plain").await;
+        assert!(result.is_err());
+
+        let result = provider.download("../../etc/passwd").await;
+        assert!(result.is_err());
+
+        let result = provider.exists("/etc/passwd").await;
+        assert!(result.is_err());
     }
 }

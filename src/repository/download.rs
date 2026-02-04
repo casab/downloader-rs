@@ -12,6 +12,14 @@ use anyhow::{Context, Result};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+/// Escape ILIKE special characters to prevent wildcard injection.
+fn escape_ilike(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
+}
+
 /// All columns for download queries.
 const DOWNLOAD_COLUMNS: &str = r#"
     id, url, status, file_path, user_id, bytes_downloaded, total_bytes,
@@ -324,7 +332,7 @@ async fn execute_count_query(
     }
 
     if let Some(ref url_contains) = filter.url_contains {
-        query_builder = query_builder.bind(format!("%{url_contains}%"));
+        query_builder = query_builder.bind(format!("%{}%", escape_ilike(url_contains)));
     }
 
     if let Some(created_after) = filter.created_after {
@@ -366,7 +374,7 @@ async fn execute_data_query(
     }
 
     if let Some(ref url_contains) = filter.url_contains {
-        query_builder = query_builder.bind(format!("%{url_contains}%"));
+        query_builder = query_builder.bind(format!("%{}%", escape_ilike(url_contains)));
     }
 
     if let Some(created_after) = filter.created_after {

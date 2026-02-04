@@ -11,6 +11,7 @@ use actix_web::web::Data;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::ops::Deref;
 use uuid::Uuid;
 
@@ -118,6 +119,26 @@ pub async fn reject_anonymous_users(
     };
 
     let user_id = auth_method.validate().await?;
+
+    // Verify user is not soft-deleted
+    let pool = req
+        .app_data::<Data<PgPool>>()
+        .ok_or_else(|| e500("Database pool not configured"))?
+        .clone();
+
+    let is_active: Option<bool> = sqlx::query_scalar(
+        "SELECT deleted_at IS NULL FROM users WHERE id = $1",
+    )
+    .bind(user_id.0)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(e500)?;
+
+    match is_active {
+        Some(true) => {} // User exists and is not deleted
+        _ => return Err(e401("User account is deactivated or does not exist")),
+    }
+
     req.extensions_mut().insert(user_id);
     next.call(req).await
 }

@@ -182,11 +182,11 @@ async fn run(
                             .route("/users/{id}", web::patch().to(admin_update_user))
                             .route("/users/{id}", web::delete().to(admin_delete_user))
                             .route("/downloads", web::get().to(admin_list_downloads))
-                            .route("/audit-logs", web::get().to(list_audit_logs)),
+                            .route("/audit-logs", web::get().to(list_audit_logs))
+                            // Metrics endpoint (requires admin auth)
+                            .route("/metrics", web::get().to(metrics_handler)),
                     ),
             )
-            // Metrics endpoint (outside /api/v1 scope)
-            .route("/metrics", web::get().to(metrics_handler))
             .app_data(db_pool.clone())
             .app_data(s3_client.clone())
             .app_data(base_url.clone())

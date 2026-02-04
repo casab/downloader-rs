@@ -6,7 +6,12 @@ pub fn e500<T>(e: T) -> actix_web::Error
 where
     T: std::fmt::Debug + std::fmt::Display + 'static,
 {
-    json_error(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR, e)
+    // Log the actual error for debugging, but return a generic message to the client
+    tracing::error!(error.message = %e, error.details = ?e, "Internal server error");
+    json_error(
+        actix_web::http::StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal server error",
+    )
 }
 
 pub fn e400<T>(e: T) -> actix_web::Error

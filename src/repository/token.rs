@@ -61,6 +61,39 @@ pub async fn find_valid_token_by_hash(
     Ok(token)
 }
 
+/// Atomically find and claim a valid token (mark it as used in a single query).
+/// This prevents race conditions where two concurrent requests use the same token.
+#[tracing::instrument(name = "Claim token", skip(pool, token_hash))]
+pub async fn claim_token(
+    token_hash: &str,
+    token_type: TokenType,
+    pool: &PgPool,
+) -> Result<Option<Token>> {
+    let token = sqlx::query_as::<_, Token>(
+        r#"
+        UPDATE tokens
+        SET used_at = NOW()
+        WHERE id = (
+            SELECT id FROM tokens
+            WHERE token_hash = $1
+              AND token_type = $2
+              AND used_at IS NULL
+              AND expires_at > NOW()
+            FOR UPDATE SKIP LOCKED
+            LIMIT 1
+        )
+        RETURNING id, user_id, token_hash, token_type, expires_at, used_at, created_at, metadata
+        "#,
+    )
+    .bind(token_hash)
+    .bind(token_type)
+    .fetch_optional(pool)
+    .await
+    .context("Failed to claim token")?;
+
+    Ok(token)
+}
+
 /// Mark a token as used.
 #[tracing::instrument(name = "Mark token as used", skip(pool))]
 pub async fn mark_token_used(token_id: Uuid, pool: &PgPool) -> Result<()> {

@@ -60,20 +60,33 @@ pub async fn search(
 }
 
 /// Prepare search query for PostgreSQL full-text search.
+/// Strips all tsquery special characters to prevent injection.
 fn prepare_search_query(query: &str) -> String {
-    // Split into words and join with AND operator
     query
         .split_whitespace()
         .filter(|word| !word.is_empty())
-        .map(|word| {
-            // Escape special characters and add prefix matching
-            let escaped = word
-                .replace('\\', "\\\\")
-                .replace('\'', "''");
-            format!("{}:*", escaped)
+        .filter_map(|word| {
+            // Keep only alphanumeric characters, hyphens, and underscores
+            let sanitized: String = word
+                .chars()
+                .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+                .collect();
+            if sanitized.is_empty() {
+                None
+            } else {
+                Some(format!("{sanitized}:*"))
+            }
         })
         .collect::<Vec<_>>()
         .join(" & ")
+}
+
+/// Escape ILIKE special characters to prevent wildcard injection.
+fn escape_ilike_search(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// Search downloads.
@@ -162,7 +175,7 @@ async fn search_downloads(
         }
     }
     if let Some(ref content_type) = query.content_type {
-        count_builder = count_builder.bind(format!("%{}%", content_type));
+        count_builder = count_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }
     if let Some(min_size) = query.min_size {
         count_builder = count_builder.bind(min_size);
@@ -197,7 +210,7 @@ async fn search_downloads(
         }
     }
     if let Some(ref content_type) = query.content_type {
-        data_builder = data_builder.bind(format!("%{}%", content_type));
+        data_builder = data_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }
     if let Some(min_size) = query.min_size {
         data_builder = data_builder.bind(min_size);

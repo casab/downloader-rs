@@ -2,8 +2,8 @@ use crate::configuration::JwtSettings;
 use crate::middlewares::auth::create_jwt_token;
 use crate::models::{ForgotPasswordRequest, ResetPasswordRequest, TokenType, VerifyEmailRequest};
 use crate::repository::{
-    create_token, create_user, find_valid_token_by_hash, get_stored_credentials, get_user_by_email,
-    get_user_by_id, invalidate_user_tokens, mark_email_verified, mark_token_used,
+    claim_token, create_token, create_user, get_stored_credentials, get_user_by_email,
+    get_user_by_id, invalidate_user_tokens, mark_email_verified,
     update_password_hash,
 };
 use crate::session_state::TypedSession;
@@ -73,6 +73,11 @@ pub async fn register(
         email: register_data.email.clone(),
         password: register_data.password.clone(),
     };
+
+    // Validate email format
+    if !is_valid_email(&credentials.email) {
+        return Err(e400("Invalid email format"));
+    }
 
     match create_user(credentials.email, credentials.password, &pool).await {
         Ok(user_id) => {
@@ -163,11 +168,9 @@ pub async fn forgot_password(
             tracing::error!("Failed to create password reset token: {:?}", e);
         } else {
             // In production, send email with reset link containing the token
-            // For now, log the token (REMOVE IN PRODUCTION)
             tracing::info!(
-                "Password reset token for {}: {} (expires: {})",
+                "Password reset token generated for {} (expires: {})",
                 email,
-                token,
                 expires_at
             );
         }
@@ -192,9 +195,9 @@ pub async fn reset_password(
         return Err(e400("Password must be at least 8 characters"));
     }
 
-    // Find and validate token
+    // Atomically find and claim the token to prevent race conditions
     let token_hash = hash_token(&request.token);
-    let token = find_valid_token_by_hash(&token_hash, TokenType::PasswordReset, &pool)
+    let token = claim_token(&token_hash, TokenType::PasswordReset, &pool)
         .await
         .map_err(e500)?
         .ok_or_else(|| e400("Invalid or expired token"))?;
@@ -210,9 +213,6 @@ pub async fn reset_password(
     update_password_hash(token.user_id, new_hash.expose_secret(), &pool)
         .await
         .map_err(e500)?;
-
-    // Mark token as used
-    mark_token_used(token.id, &pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Password has been reset successfully"
@@ -231,9 +231,9 @@ pub async fn verify_email(
 ) -> Result<HttpResponse, actix_web::Error> {
     let token_str = body.into_inner().token;
 
-    // Find and validate token
+    // Atomically find and claim the token
     let token_hash = hash_token(&token_str);
-    let token = find_valid_token_by_hash(&token_hash, TokenType::EmailVerification, &pool)
+    let token = claim_token(&token_hash, TokenType::EmailVerification, &pool)
         .await
         .map_err(e500)?
         .ok_or_else(|| e400("Invalid or expired token"))?;
@@ -242,9 +242,6 @@ pub async fn verify_email(
     mark_email_verified(token.user_id, &pool)
         .await
         .map_err(e500)?;
-
-    // Mark token as used
-    mark_token_used(token.id, &pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Email verified successfully"
@@ -287,15 +284,36 @@ pub async fn resend_verification(
     .map_err(e500)?;
 
     // In production, send email with verification link
-    // For now, log the token (REMOVE IN PRODUCTION)
     tracing::info!(
-        "Email verification token for {}: {} (expires: {})",
+        "Email verification token generated for {} (expires: {})",
         user.email,
-        token,
         expires_at
     );
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "message": "Verification email has been sent"
     })))
+}
+
+// =============================================================================
+// Helpers
+// =============================================================================
+
+/// Basic email format validation.
+fn is_valid_email(email: &str) -> bool {
+    // RFC 5321: max 254 characters
+    if email.len() > 254 || email.is_empty() {
+        return false;
+    }
+    let parts: Vec<&str> = email.splitn(2, '@').collect();
+    if parts.len() != 2 {
+        return false;
+    }
+    let (local, domain) = (parts[0], parts[1]);
+    !local.is_empty()
+        && !domain.is_empty()
+        && domain.contains('.')
+        && !domain.starts_with('.')
+        && !domain.ends_with('.')
+        && !domain.contains("..")
 }

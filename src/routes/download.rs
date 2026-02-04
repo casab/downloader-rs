@@ -9,6 +9,7 @@ use crate::repository::{
 use crate::utils::{download_file, e400, e404, e500};
 use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
+use std::net::IpAddr;
 
 #[derive(serde::Deserialize)]
 pub struct Parameters {
@@ -23,6 +24,10 @@ pub async fn download(
     s3_client: web::Data<Option<S3Client>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
+
+    // SSRF protection: validate URL before processing
+    validate_download_url(file_link).await.map_err(e400)?;
+
     let download = create_download(file_link, &user_id.into_inner(), None, None, &pool)
         .await
         .map_err(e500)?;
@@ -225,4 +230,84 @@ pub async fn cancel_download(
 
     let updated = repo_cancel(download_id, &pool).await.map_err(e500)?;
     Ok(HttpResponse::Ok().json(updated))
+}
+
+// =============================================================================
+// SSRF Protection
+// =============================================================================
+
+/// Validate that a download URL is safe (not targeting internal/private networks).
+async fn validate_download_url(raw_url: &str) -> Result<(), String> {
+    let parsed = url::Url::parse(raw_url).map_err(|e| format!("Invalid URL: {e}"))?;
+
+    // Only allow http and https schemes
+    match parsed.scheme() {
+        "http" | "https" => {}
+        scheme => {
+            return Err(format!(
+                "Unsupported URL scheme '{scheme}': only HTTP and HTTPS are allowed"
+            ))
+        }
+    }
+
+    let host = parsed.host().ok_or("URL must have a host")?;
+
+    match host {
+        url::Host::Ipv4(ip) => {
+            if is_private_ipv4(&ip) {
+                return Err(
+                    "Access to internal/private network addresses is not allowed".to_string(),
+                );
+            }
+        }
+        url::Host::Ipv6(ip) => {
+            if is_private_ipv6(&ip) {
+                return Err(
+                    "Access to internal/private network addresses is not allowed".to_string(),
+                );
+            }
+        }
+        url::Host::Domain(domain) => {
+            // Resolve hostname and check all returned IPs
+            let port = parsed.port_or_known_default().unwrap_or(80);
+            let addrs = tokio::net::lookup_host(format!("{domain}:{port}"))
+                .await
+                .map_err(|e| format!("Failed to resolve hostname: {e}"))?;
+
+            for addr in addrs {
+                match addr.ip() {
+                    IpAddr::V4(ip) if is_private_ipv4(&ip) => {
+                        return Err(
+                            "URL resolves to an internal/private network address".to_string(),
+                        );
+                    }
+                    IpAddr::V6(ip) if is_private_ipv6(&ip) => {
+                        return Err(
+                            "URL resolves to an internal/private network address".to_string(),
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_private_ipv4(ip: &std::net::Ipv4Addr) -> bool {
+    ip.is_loopback()
+        || ip.is_private()
+        || ip.is_link_local()
+        || ip.is_broadcast()
+        || ip.is_unspecified()
+        // 100.64.0.0/10 (Carrier-grade NAT)
+        || (ip.octets()[0] == 100 && (ip.octets()[1] & 0xC0) == 64)
+}
+
+fn is_private_ipv6(ip: &std::net::Ipv6Addr) -> bool {
+    ip.is_loopback()
+        || ip.is_unspecified()
+        // Check for IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
+        || ip.to_ipv4_mapped().is_some_and(|ipv4| is_private_ipv4(&ipv4))
 }
