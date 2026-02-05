@@ -1,25 +1,28 @@
 use crate::helpers::{TestUser, spawn_app};
-use downloader::models::{Download, DownloadStatus};
+use downloader::models::{Download, DownloadRow, DownloadStatus, PaginatedResponse};
 use sqlx::PgPool;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn create_test_download(pool: &PgPool, test_user: &TestUser) -> Download {
-    sqlx::query_as!(
-        Download,
+    let row = sqlx::query_as::<_, DownloadRow>(
         r#"
         INSERT INTO downloads (id, url, status, user_id, created_at, updated_at)
         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        RETURNING id, url, user_id, status as "status: DownloadStatus", file_path, created_at, updated_at, completed_at
+        RETURNING id, url, status, file_path, user_id, bytes_downloaded, total_bytes,
+                  content_type, filename, error_message, retry_count, max_retries,
+                  priority, started_at, metadata, created_at, updated_at, completed_at
         "#,
-        uuid::Uuid::new_v4(),
-        "https://example.com/test.zip",
-        "PENDING",
-        test_user.id
     )
+    .bind(uuid::Uuid::new_v4())
+    .bind("https://example.com/test.zip")
+    .bind(DownloadStatus::Pending)
+    .bind(test_user.id)
     .fetch_one(pool)
     .await
-    .expect("Failed to create test download")
+    .expect("Failed to create test download");
+
+    Download::from(row)
 }
 
 #[tokio::test]
@@ -93,11 +96,11 @@ async fn get_downloads_returns_200_and_list() {
     // Assert
     assert_eq!(response.status().as_u16(), 200);
 
-    let returned_downloads: Vec<Download> =
+    let paginated_response: PaginatedResponse<Download> =
         response.json().await.expect("Failed to parse response");
-    assert_eq!(returned_downloads.len(), 2);
-    assert!(returned_downloads.iter().any(|d| d.id == download1.id));
-    assert!(returned_downloads.iter().any(|d| d.id == download2.id));
+    assert_eq!(paginated_response.data.len(), 2);
+    assert!(paginated_response.data.iter().any(|d| d.id == download1.id));
+    assert!(paginated_response.data.iter().any(|d| d.id == download2.id));
 }
 
 #[tokio::test]

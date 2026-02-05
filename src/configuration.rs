@@ -1,3 +1,4 @@
+use crate::clients::StorageConfig;
 use secrecy::{ExposeSecret, SecretString};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use sqlx::ConnectOptions;
@@ -9,6 +10,8 @@ pub struct Settings {
     pub application: ApplicationSettings,
     pub redis_uri: SecretString,
     pub s3: Option<S3Settings>,
+    #[serde(default)]
+    pub storage: StorageConfig,
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
@@ -67,6 +70,7 @@ impl DatabaseSettings {
     }
 }
 
+#[allow(clippy::expect_used)]
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine the current directory");
     let configuration_directory = base_path.join("configuration");
@@ -118,8 +122,7 @@ impl TryFrom<String> for Environment {
             "local" => Ok(Environment::Local),
             "production" => Ok(Environment::Production),
             other => Err(format!(
-                "{} is not a supported environment. Use either 'local' or 'production'.",
-                other
+                "{other} is not a supported environment. Use either 'local' or 'production'."
             )),
         }
     }

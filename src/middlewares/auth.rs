@@ -11,6 +11,7 @@ use actix_web::web::Data;
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use secrecy::ExposeSecret;
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
 use std::ops::Deref;
 use uuid::Uuid;
 
@@ -55,10 +56,14 @@ pub fn create_jwt_token(
     user_id: Uuid,
     config: &JwtSettings,
 ) -> Result<String, jsonwebtoken::errors::Error> {
-    let expiration = chrono::Utc::now()
-        .checked_add_signed(chrono::Duration::hours(config.expiration_hours))
-        .expect("Failed to calculate expiration date")
-        .timestamp() as usize;
+    // Clamp to max 1 year to prevent timestamp overflow
+    let hours = config.expiration_hours.min(8760);
+    #[allow(clippy::expect_used)]
+    let expiration_time = chrono::Utc::now()
+        .checked_add_signed(chrono::Duration::hours(hours))
+        .expect("valid duration within 1 year");
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let expiration = expiration_time.timestamp() as usize;
 
     let claims = Claims {
         sub: user_id,
@@ -72,6 +77,7 @@ pub fn create_jwt_token(
     )
 }
 
+#[allow(clippy::unused_async)]
 async fn validate_jwt(
     auth_header: &HeaderValue,
     config: &JwtSettings,
@@ -87,7 +93,7 @@ async fn validate_jwt(
         ) {
             Ok(token_data) => {
                 return Ok(UserId(token_data.claims.sub));
-            }
+            },
             Err(e) => return Err(e401(e)),
         }
     }
@@ -95,6 +101,7 @@ async fn validate_jwt(
     Err(e401("Missing or invalid Authorization header"))
 }
 
+#[allow(clippy::unused_async)]
 async fn validate_session(session: &TypedSession) -> Result<UserId, actix_web::Error> {
     match session.get_user_id().map_err(e500)? {
         Some(user_id) => Ok(UserId(user_id)),
@@ -107,6 +114,7 @@ pub async fn reject_anonymous_users(
     next: Next<impl MessageBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
     let auth_method = if let Some(auth_header) = req.headers().get("Authorization") {
+        #[allow(clippy::expect_used)]
         let jwt_settings = req
             .app_data::<Data<JwtSettings>>()
             .expect("JWT configuration must be set")
@@ -118,6 +126,26 @@ pub async fn reject_anonymous_users(
     };
 
     let user_id = auth_method.validate().await?;
+
+    // Verify user is not soft-deleted
+    let pool = req
+        .app_data::<Data<PgPool>>()
+        .ok_or_else(|| e500("Database pool not configured"))?
+        .clone();
+
+    let is_active: Option<bool> = sqlx::query_scalar(
+        "SELECT deleted_at IS NULL FROM users WHERE id = $1",
+    )
+    .bind(user_id.0)
+    .fetch_optional(pool.get_ref())
+    .await
+    .map_err(e500)?;
+
+    match is_active {
+        Some(true) => {} // User exists and is not deleted
+        _ => return Err(e401("User account is deactivated or does not exist")),
+    }
+
     req.extensions_mut().insert(user_id);
     next.call(req).await
 }
