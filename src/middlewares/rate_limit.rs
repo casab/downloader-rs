@@ -155,13 +155,13 @@ impl RateLimiter {
     /// Build HTTP response headers for rate limiting.
     pub fn build_headers(result: &RateLimitResult) -> Vec<(&'static str, String)> {
         let mut headers = vec![
-            ("X-RateLimit-Limit", result.limit.to_string()),
-            ("X-RateLimit-Remaining", result.remaining.to_string()),
-            ("X-RateLimit-Reset", result.reset_at.timestamp().to_string()),
+            ("x-ratelimit-limit", result.limit.to_string()),
+            ("x-ratelimit-remaining", result.remaining.to_string()),
+            ("x-ratelimit-reset", result.reset_at.timestamp().to_string()),
         ];
 
         if let Some(retry_after) = result.retry_after {
-            headers.push(("Retry-After", retry_after.as_secs().to_string()));
+            headers.push(("retry-after", retry_after.as_secs().to_string()));
         }
 
         headers
@@ -291,7 +291,7 @@ mod tests {
 
         let headers = RateLimiter::build_headers(&result);
         assert_eq!(headers.len(), 3);
-        assert_eq!(headers[0].0, "X-RateLimit-Limit");
+        assert_eq!(headers[0].0, "x-ratelimit-limit");
         assert_eq!(headers[0].1, "60");
     }
 
@@ -307,7 +307,7 @@ mod tests {
 
         let headers = RateLimiter::build_headers(&result);
         assert_eq!(headers.len(), 4);
-        assert_eq!(headers[3].0, "Retry-After");
+        assert_eq!(headers[3].0, "retry-after");
         assert_eq!(headers[3].1, "45");
     }
 }
