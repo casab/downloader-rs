@@ -1,3 +1,4 @@
+use crate::api::AllowPrivateUrls;
 use crate::clients::S3Client;
 use crate::events::{DownloadCompleted, DownloadFailed, Event, EventPublisher};
 use crate::middlewares::UserId;
@@ -21,7 +22,7 @@ pub struct Parameters {
 
 #[tracing::instrument(
     name = "Download the given url to a file",
-    skip(parameters, pool, event_publisher)
+    skip(parameters, pool, event_publisher, allow_private)
 )]
 pub async fn download(
     parameters: web::Query<Parameters>,
@@ -29,12 +30,16 @@ pub async fn download(
     user_id: web::ReqData<UserId>,
     s3_client: web::Data<Option<S3Client>>,
     event_publisher: Option<web::Data<Arc<dyn EventPublisher>>>,
+    allow_private: Option<web::Data<AllowPrivateUrls>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
     let uid = user_id.into_inner();
 
     // SSRF protection: validate URL before processing
-    validate_download_url(file_link).await.map_err(e400)?;
+    let allow = allow_private.as_ref().is_some_and(|a| a.0);
+    validate_download_url(file_link, allow)
+        .await
+        .map_err(e400)?;
 
     let download = create_download(file_link, &uid, None, None, &pool)
         .await
@@ -274,7 +279,9 @@ pub async fn cancel_download(
 // =============================================================================
 
 /// Validate that a download URL is safe (not targeting internal/private networks).
-async fn validate_download_url(raw_url: &str) -> Result<(), String> {
+///
+/// When `allow_private` is true, private/loopback IP checks are skipped (for testing).
+async fn validate_download_url(raw_url: &str, allow_private: bool) -> Result<(), String> {
     let parsed = url::Url::parse(raw_url).map_err(|e| format!("Invalid URL: {e}"))?;
 
     // Only allow http and https schemes
@@ -285,6 +292,11 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
                 "Unsupported URL scheme '{scheme}': only HTTP and HTTPS are allowed"
             ));
         },
+    }
+
+    // Skip private IP checks when explicitly allowed (e.g. local/test environments)
+    if allow_private {
+        return Ok(());
     }
 
     let host = parsed.host().ok_or("URL must have a host")?;

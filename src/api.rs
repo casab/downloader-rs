@@ -103,6 +103,7 @@ impl Application {
             configuration.redis_uri,
             configuration.s3,
             configuration.storage,
+            configuration.application.allow_private_urls,
         )
         .await?;
 
@@ -135,6 +136,11 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 }
 
 pub struct ApplicationBaseUrl(pub String);
+
+/// Whether SSRF private-IP checks should be skipped (for testing only).
+#[derive(Debug, Clone)]
+pub struct AllowPrivateUrls(pub bool);
+
 #[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn run(
     listener: TcpListener,
@@ -145,6 +151,7 @@ async fn run(
     redis_uri: SecretString,
     s3_settings: Option<S3Settings>,
     storage_config: crate::clients::StorageConfig,
+    allow_private_urls: bool,
 ) -> Result<(Server, Option<crate::jobs::WorkerPool>), anyhow::Error> {
     let secret_key = Key::from(hmac_secret.expose_secret().as_bytes());
     let jwt_settings = web::Data::new(jwt_settings);
@@ -241,6 +248,8 @@ async fn run(
         },
     }
 
+    let allow_private_urls = web::Data::new(AllowPrivateUrls(allow_private_urls));
+
     let server = HttpServer::new(move || {
         let mut app = App::new()
             .wrap(NormalizePath::trim())
@@ -334,6 +343,7 @@ async fn run(
             .app_data(app_metrics.clone())
             .app_data(event_publisher.clone())
             .app_data(rate_limiter.clone())
+            .app_data(allow_private_urls.clone())
             .app_data(web::JsonConfig::default().error_handler(error_handler))
             .app_data(web::PathConfig::default().error_handler(error_handler))
             .app_data(web::QueryConfig::default().error_handler(error_handler));

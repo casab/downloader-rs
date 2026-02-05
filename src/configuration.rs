@@ -22,6 +22,9 @@ pub struct ApplicationSettings {
     pub base_url: String,
     pub hmac_secret: SecretString,
     pub jwt: JwtSettings,
+    /// Allow downloads from private/loopback IPs (disable SSRF protection). Only for testing.
+    #[serde(default)]
+    pub allow_private_urls: bool,
 }
 
 #[derive(serde::Deserialize, Clone, Debug)]
