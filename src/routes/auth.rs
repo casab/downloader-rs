@@ -12,6 +12,7 @@ use crate::utils::{
     compute_password_hash, e400, e401, e404, e500, errors::AuthError, generate_token, hash_token,
     verify_password_hash,
 };
+use crate::events::{Event, EventPublisher, UserLoggedIn, UserRegistered};
 use actix_web::{HttpResponse, web};
 
 use anyhow::{Context, Result};
@@ -19,6 +20,7 @@ use chrono::Utc;
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
+use std::sync::Arc;
 
 #[derive(Deserialize)]
 pub struct Credentials {
@@ -33,7 +35,7 @@ pub struct AuthResponse {
 }
 
 #[tracing::instrument(
-    skip(login_data, pool, session),
+    skip(login_data, pool, session, event_publisher),
     fields(email=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn login(
@@ -41,6 +43,7 @@ pub async fn login(
     pool: web::Data<PgPool>,
     jwt_settings: web::Data<JwtSettings>,
     session: TypedSession,
+    event_publisher: Option<web::Data<Arc<dyn EventPublisher>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let credentials = Credentials {
         email: login_data.email.clone(),
@@ -53,6 +56,16 @@ pub async fn login(
             session.renew();
             session.insert_user_id(user_id).map_err(e401)?;
             let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
+
+            // Fire login event (best-effort)
+            if let Some(ref publisher) = event_publisher {
+                let event = Event::new("user.logged_in", UserLoggedIn {
+                    user_id,
+                    method: "password".to_string(),
+                }).with_user(user_id);
+                let _ = publisher.publish_auto(event).await;
+            }
+
             Ok(HttpResponse::Ok().json(AuthResponse { user_id, jwt }))
         },
         Err(e) => Err(e401(e)),
@@ -60,7 +73,7 @@ pub async fn login(
 }
 
 #[tracing::instrument(
-    skip(register_data, pool, session),
+    skip(register_data, pool, session, event_publisher),
     fields(email=tracing::field::Empty, user_id=tracing::field::Empty)
 )]
 pub async fn register(
@@ -68,11 +81,14 @@ pub async fn register(
     pool: web::Data<PgPool>,
     jwt_settings: web::Data<JwtSettings>,
     session: TypedSession,
+    event_publisher: Option<web::Data<Arc<dyn EventPublisher>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let credentials = Credentials {
         email: register_data.email.clone(),
         password: register_data.password.clone(),
     };
+
+    let email_for_event = credentials.email.clone();
 
     // Validate email format
     if !is_valid_email(&credentials.email) {
@@ -85,6 +101,16 @@ pub async fn register(
             session.renew();
             session.insert_user_id(user_id).map_err(e401)?;
             let jwt = create_jwt_token(user_id, &jwt_settings).map_err(e500)?;
+
+            // Fire registration event (best-effort)
+            if let Some(ref publisher) = event_publisher {
+                let event = Event::new("user.registered", UserRegistered {
+                    user_id,
+                    email: email_for_event,
+                }).with_user(user_id);
+                let _ = publisher.publish_auto(event).await;
+            }
+
             Ok(HttpResponse::Created().json(AuthResponse { user_id, jwt }))
         },
         Err(e) => {

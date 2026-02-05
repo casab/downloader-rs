@@ -1,4 +1,5 @@
 use crate::clients::S3Client;
+use crate::events::{DownloadCompleted, DownloadFailed, Event, EventPublisher};
 use crate::middlewares::UserId;
 use crate::models::{DownloadProgress, DownloadQueryParams, DownloadStatus};
 use crate::repository::{
@@ -10,25 +11,28 @@ use crate::utils::{download_file, e400, e404, e500};
 use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 use std::net::IpAddr;
+use std::sync::Arc;
 
 #[derive(serde::Deserialize)]
 pub struct Parameters {
     url: String,
 }
 
-#[tracing::instrument(name = "Download the given url to a file", skip(parameters, pool))]
+#[tracing::instrument(name = "Download the given url to a file", skip(parameters, pool, event_publisher))]
 pub async fn download(
     parameters: web::Query<Parameters>,
     pool: web::Data<PgPool>,
     user_id: web::ReqData<UserId>,
     s3_client: web::Data<Option<S3Client>>,
+    event_publisher: Option<web::Data<Arc<dyn EventPublisher>>>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let file_link = &parameters.url;
+    let uid = user_id.into_inner();
 
     // SSRF protection: validate URL before processing
     validate_download_url(file_link).await.map_err(e400)?;
 
-    let download = create_download(file_link, &user_id.into_inner(), None, None, &pool)
+    let download = create_download(file_link, &uid, None, None, &pool)
         .await
         .map_err(e500)?;
 
@@ -37,12 +41,26 @@ pub async fn download(
             let updated = update_download_status(
                 download.id,
                 DownloadStatus::Completed,
-                Some(file_path),
+                Some(file_path.clone()),
                 None,
                 &pool,
             )
             .await
             .map_err(e500)?;
+
+            // Fire download completed event (best-effort)
+            if let Some(ref publisher) = event_publisher {
+                let event = Event::new("download.completed", DownloadCompleted {
+                    download_id: download.id,
+                    url: file_link.to_string(),
+                    user_id: uid.0,
+                    file_path,
+                    bytes: updated.bytes_downloaded,
+                    duration_ms: 0,
+                }).with_user(uid.0);
+                let _ = publisher.publish_auto(event).await;
+            }
+
             return Ok(HttpResponse::Ok().json(updated));
         },
         Err(err) => {
@@ -56,6 +74,19 @@ pub async fn download(
             )
             .await
             .map_err(e500)?;
+
+            // Fire download failed event (best-effort)
+            if let Some(ref publisher) = event_publisher {
+                let event = Event::new("download.failed", DownloadFailed {
+                    download_id: download.id,
+                    url: file_link.to_string(),
+                    user_id: uid.0,
+                    error: err.to_string(),
+                    attempts: 1,
+                }).with_user(uid.0);
+                let _ = publisher.publish_auto(event).await;
+            }
+
             use manic::ManicError;
             return match err {
                 ManicError::NotFound => Err(e404("Failed to find the file")),

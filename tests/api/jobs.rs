@@ -123,11 +123,7 @@ async fn test_job_fail_to_dead_letter() {
 
     // Fail the job
     queue
-        .fail(
-            job.stream_key.as_ref().unwrap(),
-            job.message_id.as_ref().unwrap(),
-            "Test failure reason",
-        )
+        .fail(&job, "Test failure reason")
         .await
         .expect("Failed to move job to dead letter");
 

@@ -1,6 +1,10 @@
 use crate::clients::get_s3_client;
+use crate::clients::{StorageProvider, create_storage_provider};
 use crate::configuration::{DatabaseSettings, JwtSettings, S3Settings, Settings};
-use crate::middlewares::{reject_anonymous_users, require_admin};
+use crate::events::{EventPublisher, LogEventPublisher};
+use crate::middlewares::{
+    RateLimitConfig, RateLimiter, rate_limit_middleware, reject_anonymous_users, require_admin,
+};
 use crate::routes::{
     // Auth & User
     cancel_download, change_password, delete_account, download, forgot_password, get_current_user,
@@ -36,11 +40,13 @@ use actix_web::{
 use secrecy::{ExposeSecret, SecretString};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::net::TcpListener;
+use std::sync::Arc;
 use tracing_actix_web::TracingLogger;
 
 pub struct Application {
     port: u16,
     server: Server,
+    worker_pool: Option<crate::jobs::WorkerPool>,
 }
 
 impl Application {
@@ -53,7 +59,7 @@ impl Application {
         );
         let listener = TcpListener::bind(address)?;
         let port = listener.local_addr().unwrap().port();
-        let server = run(
+        let (server, worker_pool) = run(
             listener,
             connection_pool,
             configuration.application.base_url,
@@ -61,10 +67,11 @@ impl Application {
             configuration.application.jwt,
             configuration.redis_uri,
             configuration.s3,
+            configuration.storage,
         )
         .await?;
 
-        Ok(Self { port, server })
+        Ok(Self { port, server, worker_pool })
     }
 
     pub fn port(&self) -> u16 {
@@ -72,7 +79,11 @@ impl Application {
     }
 
     pub async fn run_until_stopped(self) -> Result<(), std::io::Error> {
-        self.server.await
+        let result = self.server.await;
+        if let Some(pool) = self.worker_pool {
+            pool.shutdown().await;
+        }
+        result
     }
 }
 pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
@@ -88,22 +99,108 @@ async fn run(
     jwt_settings: JwtSettings,
     redis_uri: SecretString,
     s3_settings: Option<S3Settings>,
-) -> Result<Server, anyhow::Error> {
+    storage_config: crate::clients::StorageConfig,
+) -> Result<(Server, Option<crate::jobs::WorkerPool>), anyhow::Error> {
     let secret_key = Key::from(hmac_secret.expose_secret().as_bytes());
     let jwt_settings = web::Data::new(jwt_settings);
 
     let db_pool = web::Data::new(db_pool);
     let base_url = web::Data::new(ApplicationBaseUrl(base_url));
     let redis_store = RedisSessionStore::new(redis_uri.expose_secret()).await?;
-    let s3_client = web::Data::new(if let Some(s3_config) = s3_settings {
-        Some(get_s3_client(s3_config).await?)
-    } else {
-        None
-    });
+
+    // S3 client (use ref to keep s3_settings available for storage provider and job handler)
+    let s3_client_opt = match &s3_settings {
+        Some(s3_config) => Some(get_s3_client(s3_config.clone()).await?),
+        None => None,
+    };
+    let s3_client = web::Data::new(s3_client_opt.clone());
+
     let app_metrics = web::Data::new(crate::metrics::AppMetrics::new());
 
+    // ── Event Publisher ──
+    let event_publisher: Arc<dyn EventPublisher> = Arc::new(LogEventPublisher);
+    let event_publisher = web::Data::new(event_publisher);
+
+    // ── Rate Limiter ──
+    let redis_client = Arc::new(redis::Client::open(redis_uri.expose_secret().to_string())?);
+    let rate_limiter = web::Data::new(RateLimiter::new(
+        redis_client,
+        RateLimitConfig::default(),
+    ));
+
+    // ── Storage Provider (best-effort) ──
+    let storage_provider: Option<web::Data<Arc<dyn StorageProvider>>> =
+        match create_storage_provider(&storage_config, s3_settings.as_ref()).await {
+            Ok(provider) => {
+                tracing::info!(
+                    provider = provider.provider_name(),
+                    "Storage provider initialized"
+                );
+                Some(web::Data::new(Arc::from(provider)))
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create storage provider: {}", e);
+                None
+            }
+        };
+
+    // ── Job System ──
+    let mut worker_pool: Option<crate::jobs::WorkerPool> = None;
+    let redis_url = redis_uri.expose_secret().to_string();
+    let mut redis_streams_config = crate::jobs::RedisStreamsConfig::default();
+    redis_streams_config.url = redis_url.clone();
+
+    match crate::jobs::RedisStreamsQueue::with_pool(
+        redis_streams_config,
+        db_pool.get_ref().clone(),
+    ) {
+        Ok(queue) => {
+            let queue = Arc::new(queue);
+
+            // Initialize streams and consumer groups (best-effort)
+            if let Err(e) = queue.initialize().await {
+                tracing::warn!("Failed to initialize job queue streams: {}", e);
+            }
+
+            // Register job handlers
+            let mut handlers = crate::jobs::JobHandlers::new();
+            if let Some(ref s3) = s3_client_opt {
+                match crate::jobs::DownloadJobHandler::new(
+                    db_pool.get_ref().clone(),
+                    Arc::new(s3.clone()),
+                    &redis_url,
+                ) {
+                    Ok(handler) => {
+                        handlers.register(handler);
+                        tracing::info!("Registered DownloadJobHandler");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to create DownloadJobHandler: {}", e);
+                    }
+                }
+            }
+
+            let handlers = Arc::new(handlers);
+
+            // Start worker pool if any handlers are registered
+            if !handlers.registered_types().is_empty() {
+                let pool = crate::jobs::WorkerPool::start(
+                    crate::jobs::WorkerPoolConfig::default(),
+                    queue,
+                    handlers,
+                )
+                .await;
+                tracing::info!("Started job worker pool");
+                worker_pool = Some(pool);
+            }
+        }
+        Err(e) => {
+            tracing::warn!("Failed to create job queue: {}", e);
+        }
+    }
+
     let server = HttpServer::new(move || {
-        App::new()
+        let mut app = App::new()
             .wrap(NormalizePath::trim())
             .wrap(SessionMiddleware::new(
                 redis_store.clone(),
@@ -122,9 +219,10 @@ async fn run(
                     .route("/auth/reset-password", web::post().to(reset_password))
                     // Email verification (public - token in body)
                     .route("/auth/verify-email", web::post().to(verify_email))
-                    // Protected routes (auth required)
+                    // Protected routes (auth required + rate limited)
                     .service(
                         web::scope("")
+                            .wrap(from_fn(rate_limit_middleware))
                             .wrap(from_fn(reject_anonymous_users))
                             // User profile
                             .route("/me", web::get().to(get_current_user))
@@ -192,12 +290,20 @@ async fn run(
             .app_data(base_url.clone())
             .app_data(jwt_settings.clone())
             .app_data(app_metrics.clone())
+            .app_data(event_publisher.clone())
+            .app_data(rate_limiter.clone())
             .app_data(web::JsonConfig::default().error_handler(error_handler))
             .app_data(web::PathConfig::default().error_handler(error_handler))
-            .app_data(web::QueryConfig::default().error_handler(error_handler))
+            .app_data(web::QueryConfig::default().error_handler(error_handler));
+
+        if let Some(ref sp) = storage_provider {
+            app = app.app_data(sp.clone());
+        }
+
+        app
     })
     .listen(listener)?
     .run();
 
-    Ok(server)
+    Ok((server, worker_pool))
 }
