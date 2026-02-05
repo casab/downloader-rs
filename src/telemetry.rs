@@ -1,10 +1,10 @@
-use opentelemetry::trace::TracerProvider as _;
 use opentelemetry::KeyValue;
+use opentelemetry::trace::TracerProvider as _;
 use opentelemetry_otlp::{MetricExporter, SpanExporter, WithExportConfig};
 use opentelemetry_sdk::{
+    Resource,
     metrics::SdkMeterProvider,
     trace::{RandomIdGenerator, Sampler, SdkTracerProvider},
-    Resource,
 };
 use opentelemetry_semantic_conventions::resource::{SERVICE_NAME, SERVICE_VERSION};
 use serde::Deserialize;

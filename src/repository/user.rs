@@ -119,11 +119,7 @@ pub async fn mark_email_verified(user_id: Uuid, pool: &PgPool) -> Result<()> {
 
 /// Update user's password hash.
 #[tracing::instrument(name = "Update user password hash", skip(pool, password_hash))]
-pub async fn update_password_hash(
-    user_id: Uuid,
-    password_hash: &str,
-    pool: &PgPool,
-) -> Result<()> {
+pub async fn update_password_hash(user_id: Uuid, password_hash: &str, pool: &PgPool) -> Result<()> {
     sqlx::query(
         r"
         UPDATE users

@@ -12,24 +12,18 @@ use uuid::Uuid;
 /// Check if a user is an admin.
 #[tracing::instrument(name = "Check admin status", skip(pool))]
 pub async fn is_admin(user_id: Uuid, pool: &PgPool) -> Result<bool> {
-    let result = sqlx::query_scalar::<_, bool>(
-        "SELECT is_admin FROM users WHERE id = $1",
-    )
-    .bind(user_id)
-    .fetch_optional(pool)
-    .await
-    .context("Failed to check admin status")?;
+    let result = sqlx::query_scalar::<_, bool>("SELECT is_admin FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+        .context("Failed to check admin status")?;
 
     Ok(result.unwrap_or(false))
 }
 
 /// List all users (admin only).
 #[tracing::instrument(name = "List all users", skip(pool))]
-pub async fn list_all_users(
-    limit: i64,
-    offset: i64,
-    pool: &PgPool,
-) -> Result<Vec<AdminUserRow>> {
+pub async fn list_all_users(limit: i64, offset: i64, pool: &PgPool) -> Result<Vec<AdminUserRow>> {
     let users = sqlx::query_as::<_, AdminUserRow>(
         r"
         SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
@@ -60,10 +54,7 @@ pub async fn count_users(pool: &PgPool) -> Result<i64> {
 
 /// Get a single user by ID (admin view).
 #[tracing::instrument(name = "Get user by ID (admin)", skip(pool))]
-pub async fn get_user_by_id_admin(
-    user_id: Uuid,
-    pool: &PgPool,
-) -> Result<Option<AdminUserRow>> {
+pub async fn get_user_by_id_admin(user_id: Uuid, pool: &PgPool) -> Result<Option<AdminUserRow>> {
     let user = sqlx::query_as::<_, AdminUserRow>(
         r"
         SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
@@ -94,7 +85,10 @@ pub async fn admin_update_user(
     }
     if req.email_verified.is_some() {
         param_count += 1;
-        let _ = write!(query, ", email_verified_at = CASE WHEN ${param_count} THEN NOW() ELSE NULL END");
+        let _ = write!(
+            query,
+            ", email_verified_at = CASE WHEN ${param_count} THEN NOW() ELSE NULL END"
+        );
     }
 
     param_count += 1;
@@ -111,9 +105,7 @@ pub async fn admin_update_user(
 
     q = q.bind(user_id);
 
-    q.execute(pool)
-        .await
-        .context("Failed to update user")?;
+    q.execute(pool).await.context("Failed to update user")?;
 
     Ok(())
 }
@@ -166,26 +158,23 @@ pub async fn get_admin_stats(pool: &PgPool) -> Result<AdminStats> {
         .await
         .unwrap_or(0);
 
-    let completed_downloads = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM downloads WHERE status = 'COMPLETED'",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let completed_downloads =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads WHERE status = 'COMPLETED'")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
-    let failed_downloads = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM downloads WHERE status = 'FAILED'",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let failed_downloads =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads WHERE status = 'FAILED'")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
-    let in_progress_downloads = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM downloads WHERE status = 'IN_PROGRESS'",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let in_progress_downloads =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads WHERE status = 'IN_PROGRESS'")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     let total_bytes = sqlx::query_scalar::<_, i64>(
         "SELECT COALESCE(SUM(total_bytes), 0) FROM downloads WHERE status = 'COMPLETED'",
@@ -195,12 +184,11 @@ pub async fn get_admin_stats(pool: &PgPool) -> Result<AdminStats> {
     .unwrap_or(0);
 
     // Storage stats
-    let total_files = sqlx::query_scalar::<_, i64>(
-        "SELECT COUNT(*) FROM downloads WHERE status = 'COMPLETED'",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap_or(0);
+    let total_files =
+        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM downloads WHERE status = 'COMPLETED'")
+            .fetch_one(pool)
+            .await
+            .unwrap_or(0);
 
     Ok(AdminStats {
         users: UserStats {

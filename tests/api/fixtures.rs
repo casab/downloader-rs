@@ -3,6 +3,14 @@
 //! This module provides builders and factories for creating test entities
 //! with sensible defaults that can be customized as needed.
 
+#![allow(
+    dead_code,
+    clippy::expect_used,
+    clippy::unwrap_used,
+    clippy::new_ret_no_self,
+    clippy::wrong_self_convention
+)]
+
 use chrono::{DateTime, Utc};
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -154,10 +162,10 @@ impl DownloadBuilder {
         let user_id = self.user_id.expect("user_id must be set before building");
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO downloads (id, url, status, file_path, user_id, completed_at)
             VALUES ($1, $2, $3, $4, $5, $6)
-            "#,
+            ",
         )
         .bind(self.id)
         .bind(&self.url)
@@ -234,7 +242,7 @@ impl Default for UserBuilder {
         let id = Uuid::new_v4();
         Self {
             id,
-            email: format!("test-{}@example.com", id),
+            email: format!("test-{id}@example.com"),
             password: "test-password-123".to_string(),
             display_name: None,
             is_admin: false,

@@ -1,10 +1,10 @@
 use crate::configuration::JwtSettings;
+use crate::events::{Event, EventPublisher, UserLoggedIn, UserRegistered};
 use crate::middlewares::auth::create_jwt_token;
 use crate::models::{ForgotPasswordRequest, ResetPasswordRequest, TokenType, VerifyEmailRequest};
 use crate::repository::{
     claim_token, create_token, create_user, get_stored_credentials, get_user_by_email,
-    get_user_by_id, invalidate_user_tokens, mark_email_verified,
-    update_password_hash,
+    get_user_by_id, invalidate_user_tokens, mark_email_verified, update_password_hash,
 };
 use crate::session_state::TypedSession;
 use crate::telemetry::spawn_blocking_with_tracing;
@@ -12,7 +12,6 @@ use crate::utils::{
     compute_password_hash, e400, e401, e404, e500, errors::AuthError, generate_token, hash_token,
     verify_password_hash,
 };
-use crate::events::{Event, EventPublisher, UserLoggedIn, UserRegistered};
 use actix_web::{HttpResponse, web};
 
 use anyhow::{Context, Result};
@@ -59,10 +58,14 @@ pub async fn login(
 
             // Fire login event (best-effort)
             if let Some(ref publisher) = event_publisher {
-                let event = Event::new("user.logged_in", UserLoggedIn {
-                    user_id,
-                    method: "password".to_string(),
-                }).with_user(user_id);
+                let event = Event::new(
+                    "user.logged_in",
+                    UserLoggedIn {
+                        user_id,
+                        method: "password".to_string(),
+                    },
+                )
+                .with_user(user_id);
                 let _ = publisher.publish_auto(event).await;
             }
 
@@ -104,10 +107,14 @@ pub async fn register(
 
             // Fire registration event (best-effort)
             if let Some(ref publisher) = event_publisher {
-                let event = Event::new("user.registered", UserRegistered {
-                    user_id,
-                    email: email_for_event,
-                }).with_user(user_id);
+                let event = Event::new(
+                    "user.registered",
+                    UserRegistered {
+                        user_id,
+                        email: email_for_event,
+                    },
+                )
+                .with_user(user_id);
                 let _ = publisher.publish_auto(event).await;
             }
 

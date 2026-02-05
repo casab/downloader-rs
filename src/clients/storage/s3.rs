@@ -89,10 +89,7 @@ impl StorageProvider for S3StorageProvider {
                 objects.push(StorageObject {
                     key: item.key,
                     size: item.size as i64,
-                    last_modified: item
-                        .last_modified
-                        .parse()
-                        .unwrap_or_else(|_| Utc::now()),
+                    last_modified: item.last_modified.parse().unwrap_or_else(|_| Utc::now()),
                     content_type: None,
                 });
             }

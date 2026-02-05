@@ -1,9 +1,8 @@
 //! Application metrics using OpenTelemetry and Prometheus client.
 
 use opentelemetry::{
-    global,
+    KeyValue, global,
     metrics::{Counter, Histogram, UpDownCounter},
-    KeyValue,
 };
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
@@ -120,8 +119,10 @@ impl AppMetrics {
     /// Record a job completed.
     pub fn record_job_completed(&self, duration_secs: f64, job_type: &str) {
         self.job_queue_depth.add(-1, &[]);
-        self.job_processing_duration
-            .record(duration_secs, &[KeyValue::new("job_type", job_type.to_string())]);
+        self.job_processing_duration.record(
+            duration_secs,
+            &[KeyValue::new("job_type", job_type.to_string())],
+        );
     }
 }
 

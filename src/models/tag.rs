@@ -46,7 +46,10 @@ impl Tag {
         if name.len() > 50 {
             return Err(TagValidationError::NameTooLong);
         }
-        if !name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ') {
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '-' || c == '_' || c == ' ')
+        {
             return Err(TagValidationError::InvalidCharacters);
         }
         Ok(())
@@ -85,7 +88,9 @@ impl std::fmt::Display for TagValidationError {
             Self::EmptyName => write!(f, "Tag name cannot be empty"),
             Self::NameTooLong => write!(f, "Tag name cannot exceed 50 characters"),
             Self::InvalidCharacters => write!(f, "Tag name contains invalid characters"),
-            Self::InvalidColorFormat => write!(f, "Color must be a valid hex color (e.g., #FF5733)"),
+            Self::InvalidColorFormat => {
+                write!(f, "Color must be a valid hex color (e.g., #FF5733)")
+            },
         }
     }
 }
@@ -130,6 +135,7 @@ pub struct DownloadTag {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -143,19 +149,31 @@ mod tests {
 
     #[test]
     fn test_validate_name_empty() {
-        assert_eq!(Tag::validate_name("").unwrap_err(), TagValidationError::EmptyName);
+        assert_eq!(
+            Tag::validate_name("").unwrap_err(),
+            TagValidationError::EmptyName
+        );
     }
 
     #[test]
     fn test_validate_name_too_long() {
         let long_name = "a".repeat(51);
-        assert_eq!(Tag::validate_name(&long_name).unwrap_err(), TagValidationError::NameTooLong);
+        assert_eq!(
+            Tag::validate_name(&long_name).unwrap_err(),
+            TagValidationError::NameTooLong
+        );
     }
 
     #[test]
     fn test_validate_name_invalid_chars() {
-        assert_eq!(Tag::validate_name("tag@name").unwrap_err(), TagValidationError::InvalidCharacters);
-        assert_eq!(Tag::validate_name("tag#name").unwrap_err(), TagValidationError::InvalidCharacters);
+        assert_eq!(
+            Tag::validate_name("tag@name").unwrap_err(),
+            TagValidationError::InvalidCharacters
+        );
+        assert_eq!(
+            Tag::validate_name("tag#name").unwrap_err(),
+            TagValidationError::InvalidCharacters
+        );
     }
 
     #[test]
@@ -168,8 +186,17 @@ mod tests {
 
     #[test]
     fn test_validate_color_invalid() {
-        assert_eq!(Tag::validate_color("FF5733").unwrap_err(), TagValidationError::InvalidColorFormat);
-        assert_eq!(Tag::validate_color("#FFF").unwrap_err(), TagValidationError::InvalidColorFormat);
-        assert_eq!(Tag::validate_color("#GGGGGG").unwrap_err(), TagValidationError::InvalidColorFormat);
+        assert_eq!(
+            Tag::validate_color("FF5733").unwrap_err(),
+            TagValidationError::InvalidColorFormat
+        );
+        assert_eq!(
+            Tag::validate_color("#FFF").unwrap_err(),
+            TagValidationError::InvalidColorFormat
+        );
+        assert_eq!(
+            Tag::validate_color("#GGGGGG").unwrap_err(),
+            TagValidationError::InvalidColorFormat
+        );
     }
 }

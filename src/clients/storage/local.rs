@@ -19,9 +19,12 @@ impl LocalStorageProvider {
         let base_path = PathBuf::from(&config.base_path);
 
         // Ensure base directory exists
-        fs::create_dir_all(&base_path)
-            .await
-            .with_context(|| format!("Failed to create storage directory: {}", base_path.display()))?;
+        fs::create_dir_all(&base_path).await.with_context(|| {
+            format!(
+                "Failed to create storage directory: {}",
+                base_path.display()
+            )
+        })?;
 
         Ok(Self { base_path })
     }
@@ -33,11 +36,11 @@ impl LocalStorageProvider {
             match component {
                 std::path::Component::ParentDir => {
                     anyhow::bail!("Invalid storage key: path traversal ('..') not allowed");
-                }
+                },
                 std::path::Component::RootDir | std::path::Component::Prefix(_) => {
                     anyhow::bail!("Invalid storage key: absolute paths not allowed");
-                }
-                _ => {}
+                },
+                _ => {},
             }
         }
         Ok(self.base_path.join(key))
@@ -47,9 +50,9 @@ impl LocalStorageProvider {
     async fn ensure_parent_dirs(&self, key: &str) -> Result<()> {
         let path = self.key_to_path(key)?;
         if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("Failed to create parent directory: {}", parent.display()))?;
+            fs::create_dir_all(parent).await.with_context(|| {
+                format!("Failed to create parent directory: {}", parent.display())
+            })?;
         }
         Ok(())
     }
@@ -110,10 +113,9 @@ impl StorageProvider for LocalStorageProvider {
         let search_dir = if search_path.is_dir() {
             search_path
         } else {
-            search_path.parent().map_or_else(
-                || self.base_path.clone(),
-                Path::to_path_buf,
-            )
+            search_path
+                .parent()
+                .map_or_else(|| self.base_path.clone(), Path::to_path_buf)
         };
 
         if !search_dir.exists() {
@@ -137,7 +139,8 @@ impl StorageProvider for LocalStorageProvider {
 
                 if key.starts_with(prefix) {
                     let last_modified = metadata
-                        .modified().map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
+                        .modified()
+                        .map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
 
                     objects.push(StorageObject {
                         key,
@@ -160,7 +163,8 @@ impl StorageProvider for LocalStorageProvider {
             .with_context(|| format!("Failed to get metadata: {}", path.display()))?;
 
         let last_modified = metadata
-            .modified().map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
+            .modified()
+            .map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
 
         Ok(StorageMetadata {
             key: key.to_string(),
@@ -177,6 +181,7 @@ impl StorageProvider for LocalStorageProvider {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used, clippy::cast_possible_wrap)]
 mod tests {
     use super::*;
     use tempfile::TempDir;
@@ -212,14 +217,24 @@ mod tests {
     async fn test_exists() {
         let (provider, _dir) = create_test_provider().await;
 
-        assert!(!provider.exists("nonexistent").await.expect("Exists check failed"));
+        assert!(
+            !provider
+                .exists("nonexistent")
+                .await
+                .expect("Exists check failed")
+        );
 
         provider
             .upload("exists.txt", b"data", "text/plain")
             .await
             .expect("Upload failed");
 
-        assert!(provider.exists("exists.txt").await.expect("Exists check failed"));
+        assert!(
+            provider
+                .exists("exists.txt")
+                .await
+                .expect("Exists check failed")
+        );
     }
 
     #[tokio::test]
@@ -231,11 +246,24 @@ mod tests {
             .await
             .expect("Upload failed");
 
-        assert!(provider.exists("delete_me.txt").await.expect("Exists failed"));
+        assert!(
+            provider
+                .exists("delete_me.txt")
+                .await
+                .expect("Exists failed")
+        );
 
-        provider.delete("delete_me.txt").await.expect("Delete failed");
+        provider
+            .delete("delete_me.txt")
+            .await
+            .expect("Delete failed");
 
-        assert!(!provider.exists("delete_me.txt").await.expect("Exists failed"));
+        assert!(
+            !provider
+                .exists("delete_me.txt")
+                .await
+                .expect("Exists failed")
+        );
     }
 
     #[tokio::test]
@@ -248,7 +276,10 @@ mod tests {
             .await
             .expect("Upload failed");
 
-        let metadata = provider.get_metadata("meta.txt").await.expect("Metadata failed");
+        let metadata = provider
+            .get_metadata("meta.txt")
+            .await
+            .expect("Metadata failed");
         assert_eq!(metadata.key, "meta.txt");
         assert_eq!(metadata.size, data.len() as i64);
     }
@@ -257,9 +288,18 @@ mod tests {
     async fn test_list() {
         let (provider, _dir) = create_test_provider().await;
 
-        provider.upload("prefix/a.txt", b"a", "text/plain").await.expect("Upload failed");
-        provider.upload("prefix/b.txt", b"bb", "text/plain").await.expect("Upload failed");
-        provider.upload("other/c.txt", b"ccc", "text/plain").await.expect("Upload failed");
+        provider
+            .upload("prefix/a.txt", b"a", "text/plain")
+            .await
+            .expect("Upload failed");
+        provider
+            .upload("prefix/b.txt", b"bb", "text/plain")
+            .await
+            .expect("Upload failed");
+        provider
+            .upload("other/c.txt", b"ccc", "text/plain")
+            .await
+            .expect("Upload failed");
 
         let objects = provider.list("prefix/").await.expect("List failed");
         assert_eq!(objects.len(), 2);

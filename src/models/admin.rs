@@ -62,6 +62,7 @@ pub struct AdminUpdateUserRequest {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -104,7 +105,7 @@ mod tests {
         let json = r#"{"is_admin": true}"#;
         let req: Result<AdminUpdateUserRequest, _> = serde_json::from_str(json);
         assert!(req.is_ok());
-        let req = req.unwrap_or_else(|_| AdminUpdateUserRequest {
+        let req = req.unwrap_or(AdminUpdateUserRequest {
             is_admin: None,
             email_verified: None,
         });

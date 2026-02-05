@@ -34,9 +34,7 @@ pub async fn get_user_folder_by_id(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Option<Folder>> {
-    let query = format!(
-        "SELECT {FOLDER_COLUMNS} FROM folders WHERE id = $1 AND user_id = $2"
-    );
+    let query = format!("SELECT {FOLDER_COLUMNS} FROM folders WHERE id = $1 AND user_id = $2");
 
     let row = sqlx::query_as::<_, FolderRow>(&query)
         .bind(folder_id)
@@ -55,9 +53,7 @@ pub async fn get_folder_by_path(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Option<Folder>> {
-    let query = format!(
-        "SELECT {FOLDER_COLUMNS} FROM folders WHERE path = $1 AND user_id = $2"
-    );
+    let query = format!("SELECT {FOLDER_COLUMNS} FROM folders WHERE path = $1 AND user_id = $2");
 
     let row = sqlx::query_as::<_, FolderRow>(&query)
         .bind(path)
@@ -192,7 +188,9 @@ pub async fn move_folder(
 
         // Check if new parent is a descendant of this folder
         if folder.is_ancestor_of(&new_parent) {
-            return Err(anyhow::anyhow!("Cannot move folder into its own descendant"));
+            return Err(anyhow::anyhow!(
+                "Cannot move folder into its own descendant"
+            ));
         }
     }
 
@@ -247,11 +245,7 @@ pub async fn move_folder(
 
 /// Delete a folder and all its contents.
 #[tracing::instrument(name = "Delete folder", skip(pool))]
-pub async fn delete_folder(
-    folder_id: Uuid,
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<()> {
+pub async fn delete_folder(folder_id: Uuid, user_id: &UserId, pool: &PgPool) -> Result<()> {
     // First, set all downloads in this folder to no folder
     sqlx::query(
         r"
@@ -267,14 +261,12 @@ pub async fn delete_folder(
     .context("Failed to unlink downloads from folder")?;
 
     // Delete the folder (CASCADE will delete children)
-    let result = sqlx::query(
-        "DELETE FROM folders WHERE id = $1 AND user_id = $2",
-    )
-    .bind(folder_id)
-    .bind(user_id.0)
-    .execute(pool)
-    .await
-    .context("Failed to delete folder")?;
+    let result = sqlx::query("DELETE FROM folders WHERE id = $1 AND user_id = $2")
+        .bind(folder_id)
+        .bind(user_id.0)
+        .execute(pool)
+        .await
+        .context("Failed to delete folder")?;
 
     if result.rows_affected() == 0 {
         return Err(anyhow::anyhow!("Folder not found"));

@@ -1,10 +1,6 @@
 //! Unified query parameters combining pagination, filtering, and sorting.
 
-use crate::models::{
-    filter::DownloadFilter,
-    pagination::PaginationParams,
-    sorting::SortParams,
-};
+use crate::models::{filter::DownloadFilter, pagination::PaginationParams, sorting::SortParams};
 use serde::Deserialize;
 
 /// Combined query parameters for download list endpoints.
@@ -69,15 +65,16 @@ impl DownloadQueryParams {
         use crate::models::DownloadStatus;
         use chrono::DateTime;
 
-        let status = self.status.as_ref().and_then(|s| {
-            match s.to_uppercase().as_str() {
+        let status = self
+            .status
+            .as_ref()
+            .and_then(|s| match s.to_uppercase().as_str() {
                 "PENDING" => Some(DownloadStatus::Pending),
                 "IN_PROGRESS" => Some(DownloadStatus::InProgress),
                 "COMPLETED" => Some(DownloadStatus::Completed),
                 "FAILED" => Some(DownloadStatus::Failed),
                 _ => None,
-            }
-        });
+            });
 
         let created_after = self
             .created_after

@@ -2,7 +2,9 @@
 
 use crate::{
     middlewares::UserId,
-    models::{Download, DownloadRow, Folder, SearchQuery, SearchResponse, SearchResult, SearchResultType},
+    models::{
+        Download, DownloadRow, Folder, SearchQuery, SearchResponse, SearchResult, SearchResultType,
+    },
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
@@ -28,7 +30,8 @@ pub async fn search(
     let mut total: i64 = 0;
 
     // Search downloads
-    let (download_results, download_count) = search_downloads(&search_term, query, user_id, pool).await?;
+    let (download_results, download_count) =
+        search_downloads(&search_term, query, user_id, pool).await?;
     results.extend(download_results);
     total += download_count;
 
@@ -38,18 +41,19 @@ pub async fn search(
     total += folder_count;
 
     // Sort by score (descending)
-    results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+    results.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     // Apply pagination
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let offset = query.offset() as usize;
     #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let limit = query.limit() as usize;
-    let paginated_results: Vec<SearchResult> = results
-        .into_iter()
-        .skip(offset)
-        .take(limit)
-        .collect();
+    let paginated_results: Vec<SearchResult> =
+        results.into_iter().skip(offset).take(limit).collect();
 
     #[allow(clippy::cast_possible_truncation)]
     let took_ms = start.elapsed().as_millis() as i64;
@@ -113,7 +117,8 @@ async fn search_downloads(
     }
 
     if let Some(ref statuses) = query.status
-        && !statuses.is_empty() {
+        && !statuses.is_empty()
+    {
         param_count += 1;
         conditions.push(format!("status = ANY(${param_count})"));
     }
@@ -146,9 +151,7 @@ async fn search_downloads(
     let where_clause = conditions.join(" AND ");
 
     // Count query
-    let count_query = format!(
-        "SELECT COUNT(*) FROM downloads WHERE {where_clause}"
-    );
+    let count_query = format!("SELECT COUNT(*) FROM downloads WHERE {where_clause}");
 
     // Fetch enough rows to cover the requested page across merged results
     let fetch_limit = query.offset() + query.limit();
@@ -177,10 +180,14 @@ async fn search_downloads(
         count_builder = count_builder.bind(folder_id);
     }
     if let Some(ref statuses) = query.status
-        && !statuses.is_empty() {
-            let status_strs: Vec<String> = statuses.iter().map(std::string::ToString::to_string).collect();
-            count_builder = count_builder.bind(status_strs);
-        }
+        && !statuses.is_empty()
+    {
+        let status_strs: Vec<String> = statuses
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
+        count_builder = count_builder.bind(status_strs);
+    }
     if let Some(ref content_type) = query.content_type {
         count_builder = count_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }
@@ -211,10 +218,14 @@ async fn search_downloads(
         data_builder = data_builder.bind(folder_id);
     }
     if let Some(ref statuses) = query.status
-        && !statuses.is_empty() {
-            let status_strs: Vec<String> = statuses.iter().map(std::string::ToString::to_string).collect();
-            data_builder = data_builder.bind(status_strs);
-        }
+        && !statuses.is_empty()
+    {
+        let status_strs: Vec<String> = statuses
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
+        data_builder = data_builder.bind(status_strs);
+    }
     if let Some(ref content_type) = query.content_type {
         data_builder = data_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }

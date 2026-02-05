@@ -6,27 +6,62 @@ use crate::middlewares::{
     RateLimitConfig, RateLimiter, rate_limit_middleware, reject_anonymous_users, require_admin,
 };
 use crate::routes::{
-    // Auth & User
-    cancel_download, change_password, delete_account, download, forgot_password, get_current_user,
-    get_download, get_downloads, get_progress, health_check, login, pause_download, register,
-    resend_verification, reset_password, resume_download, retry_download, update_profile,
-    verify_email,
-    // Folders
-    create_folder, list_root_folders, get_folder, get_folder_subfolders, update_folder,
-    move_folder, delete_folder,
-    // Tags
-    create_tag, list_tags, get_tag, update_tag, delete_tag, add_download_tags,
-    remove_download_tag, get_tags_for_download,
+    add_download_tags,
+    admin_delete_user,
+    admin_get_user,
+    admin_list_downloads,
+    admin_list_users,
+    admin_update_user,
+    bulk_delete,
     // Bulk operations
-    bulk_move, bulk_tag, bulk_untag, bulk_delete,
-    // Search
-    search_handler,
+    bulk_move,
+    bulk_tag,
+    bulk_untag,
+    // Auth & User
+    cancel_download,
+    change_password,
+    // Folders
+    create_folder,
+    // Tags
+    create_tag,
+    delete_account,
+    delete_folder,
+    delete_tag,
+    // Health & Admin
+    detailed_health_check,
+    download,
+    forgot_password,
+    get_admin_stats,
+    get_current_user,
+    get_download,
+    get_downloads,
+    get_folder,
+    get_folder_subfolders,
+    get_progress,
+    get_tag,
+    get_tags_for_download,
     // Usage
     get_usage,
-    // Health & Admin
-    detailed_health_check, get_admin_stats, admin_list_users, admin_get_user,
-    admin_update_user, admin_delete_user, list_audit_logs, admin_list_downloads,
+    health_check,
+    list_audit_logs,
+    list_root_folders,
+    list_tags,
+    login,
     metrics_handler,
+    move_folder,
+    pause_download,
+    register,
+    remove_download_tag,
+    resend_verification,
+    reset_password,
+    resume_download,
+    retry_download,
+    // Search
+    search_handler,
+    update_folder,
+    update_profile,
+    update_tag,
+    verify_email,
 };
 use crate::utils::error_handler;
 use actix_session::{SessionMiddleware, storage::RedisSessionStore};
@@ -71,7 +106,11 @@ impl Application {
         )
         .await?;
 
-        Ok(Self { port, server, worker_pool })
+        Ok(Self {
+            port,
+            server,
+            worker_pool,
+        })
     }
 
     pub fn port(&self) -> u16 {
@@ -129,10 +168,7 @@ async fn run(
 
     // ── Rate Limiter ──
     let redis_client = Arc::new(redis::Client::open(redis_uri.expose_secret().to_string())?);
-    let rate_limiter = web::Data::new(RateLimiter::new(
-        redis_client,
-        RateLimitConfig::default(),
-    ));
+    let rate_limiter = web::Data::new(RateLimiter::new(redis_client, RateLimitConfig::default()));
 
     // ── Storage Provider (best-effort) ──
     let storage_provider: Option<web::Data<Arc<dyn StorageProvider>>> =
@@ -143,11 +179,11 @@ async fn run(
                     "Storage provider initialized"
                 );
                 Some(web::Data::new(Arc::from(provider)))
-            }
+            },
             Err(e) => {
                 tracing::warn!("Failed to create storage provider: {}", e);
                 None
-            }
+            },
         };
 
     // ── Job System ──
@@ -158,10 +194,8 @@ async fn run(
         ..crate::jobs::RedisStreamsConfig::default()
     };
 
-    match crate::jobs::RedisStreamsQueue::with_pool(
-        redis_streams_config,
-        db_pool.get_ref().clone(),
-    ) {
+    match crate::jobs::RedisStreamsQueue::with_pool(redis_streams_config, db_pool.get_ref().clone())
+    {
         Ok(queue) => {
             let queue = Arc::new(queue);
 
@@ -181,10 +215,10 @@ async fn run(
                     Ok(handler) => {
                         handlers.register(handler);
                         tracing::info!("Registered DownloadJobHandler");
-                    }
+                    },
                     Err(e) => {
                         tracing::warn!("Failed to create DownloadJobHandler: {}", e);
-                    }
+                    },
                 }
             }
 
@@ -201,10 +235,10 @@ async fn run(
                 tracing::info!("Started job worker pool");
                 worker_pool = Some(pool);
             }
-        }
+        },
         Err(e) => {
             tracing::warn!("Failed to create job queue: {}", e);
-        }
+        },
     }
 
     let server = HttpServer::new(move || {

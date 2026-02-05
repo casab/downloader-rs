@@ -4,18 +4,14 @@ use crate::middlewares::UserId;
 use crate::models::{AdminUpdateUserRequest, AuditLogQuery, CreateAuditLog};
 use crate::repository;
 use crate::utils::e500;
-use actix_web::{web, HttpRequest, HttpResponse};
+use actix_web::{HttpRequest, HttpResponse, web};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 /// GET /api/v1/admin/stats - Get system statistics.
 #[tracing::instrument(name = "Get admin stats", skip(pool))]
-pub async fn get_admin_stats(
-    pool: web::Data<PgPool>,
-) -> Result<HttpResponse, actix_web::Error> {
-    let stats = repository::get_admin_stats(&pool)
-        .await
-        .map_err(e500)?;
+pub async fn get_admin_stats(pool: web::Data<PgPool>) -> Result<HttpResponse, actix_web::Error> {
+    let stats = repository::get_admin_stats(&pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(stats))
 }
@@ -34,9 +30,7 @@ pub async fn admin_list_users(
         .await
         .map_err(e500)?;
 
-    let total = repository::count_users(&pool)
-        .await
-        .map_err(e500)?;
+    let total = repository::count_users(&pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "data": users,
@@ -129,8 +123,9 @@ pub async fn admin_delete_user(
 
     // Don't allow self-deletion
     if admin_id.0 == target_user_id {
-        return Ok(HttpResponse::BadRequest()
-            .json(serde_json::json!({"error": "Cannot delete yourself"})));
+        return Ok(
+            HttpResponse::BadRequest().json(serde_json::json!({"error": "Cannot delete yourself"}))
+        );
     }
 
     repository::admin_delete_user(target_user_id, &pool)
@@ -232,9 +227,7 @@ pub async fn admin_list_downloads(
 }
 
 /// GET /metrics - Prometheus metrics endpoint.
-pub async fn metrics_handler(
-    metrics: web::Data<crate::metrics::AppMetrics>,
-) -> HttpResponse {
+pub async fn metrics_handler(metrics: web::Data<crate::metrics::AppMetrics>) -> HttpResponse {
     let registry = metrics.prometheus_registry.read().await;
     let output = crate::metrics::encode_prometheus_metrics(&registry);
 

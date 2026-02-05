@@ -133,16 +133,15 @@ pub async fn reject_anonymous_users(
         .ok_or_else(|| e500("Database pool not configured"))?
         .clone();
 
-    let is_active: Option<bool> = sqlx::query_scalar(
-        "SELECT deleted_at IS NULL FROM users WHERE id = $1",
-    )
-    .bind(user_id.0)
-    .fetch_optional(pool.get_ref())
-    .await
-    .map_err(e500)?;
+    let is_active: Option<bool> =
+        sqlx::query_scalar("SELECT deleted_at IS NULL FROM users WHERE id = $1")
+            .bind(user_id.0)
+            .fetch_optional(pool.get_ref())
+            .await
+            .map_err(e500)?;
 
     match is_active {
-        Some(true) => {} // User exists and is not deleted
+        Some(true) => {}, // User exists and is not deleted
         _ => return Err(e401("User account is deactivated or does not exist")),
     }
 

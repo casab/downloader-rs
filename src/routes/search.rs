@@ -26,9 +26,7 @@ pub async fn search_handler(
         return Err(e400("Search query too long"));
     }
 
-    let results = search(&search_query, &user_id, &pool)
-        .await
-        .map_err(e500)?;
+    let results = search(&search_query, &user_id, &pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(results))
 }

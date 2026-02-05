@@ -140,8 +140,7 @@ pub struct AdminAction {
 }
 
 /// Kafka producer configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct EventsConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -190,7 +189,6 @@ fn default_batch_size() -> u32 {
     16384
 }
 
-
 impl Default for KafkaConfig {
     fn default() -> Self {
         Self {
@@ -218,11 +216,14 @@ mod tests {
 
     #[test]
     fn test_event_creation() {
-        let event = Event::new("download.started", DownloadStarted {
-            download_id: Uuid::new_v4(),
-            url: "https://example.com/file.zip".to_string(),
-            user_id: Uuid::new_v4(),
-        });
+        let event = Event::new(
+            "download.started",
+            DownloadStarted {
+                download_id: Uuid::new_v4(),
+                url: "https://example.com/file.zip".to_string(),
+                user_id: Uuid::new_v4(),
+            },
+        );
 
         assert_eq!(event.event_type, "download.started");
         assert_eq!(event.source, "downloader-rs");
@@ -232,10 +233,13 @@ mod tests {
     #[test]
     fn test_event_with_user() {
         let user_id = Uuid::new_v4();
-        let event = Event::new("user.registered", UserRegistered {
-            user_id,
-            email: "test@example.com".to_string(),
-        })
+        let event = Event::new(
+            "user.registered",
+            UserRegistered {
+                user_id,
+                email: "test@example.com".to_string(),
+            },
+        )
         .with_user(user_id);
 
         assert_eq!(event.metadata.user_id, Some(user_id));

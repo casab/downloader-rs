@@ -53,7 +53,10 @@ impl DownloadJobHandler {
     }
 
     /// Perform the actual download with progress tracking.
-    async fn download_with_progress(&self, payload: &DownloadPayload) -> anyhow::Result<DownloadResult> {
+    async fn download_with_progress(
+        &self,
+        payload: &DownloadPayload,
+    ) -> anyhow::Result<DownloadResult> {
         // Update status to InProgress
         update_download_status(
             payload.download_id,
@@ -75,7 +78,13 @@ impl DownloadJobHandler {
         };
 
         // Update progress in database
-        update_download_progress(payload.download_id, total_bytes, Some(total_bytes), &self.pool).await?;
+        update_download_progress(
+            payload.download_id,
+            total_bytes,
+            Some(total_bytes),
+            &self.pool,
+        )
+        .await?;
 
         // Publish final progress
         self.publish_progress(payload.download_id, total_bytes, Some(total_bytes))
@@ -124,7 +133,7 @@ impl JobHandler for DownloadJobHandler {
                     "file_path": result.file_path,
                     "total_bytes": result.total_bytes,
                 }))
-            }
+            },
             Err(e) => {
                 // Update download status to failed
                 update_download_status(
@@ -144,7 +153,7 @@ impl JobHandler for DownloadJobHandler {
                 );
 
                 Err(e)
-            }
+            },
         }
     }
 

@@ -1,6 +1,6 @@
 //! Health check endpoints.
 
-use actix_web::{web, HttpResponse};
+use actix_web::{HttpResponse, web};
 use serde::Serialize;
 use sqlx::PgPool;
 use std::collections::HashMap;
@@ -39,9 +39,7 @@ pub struct HealthResponse {
 
 /// Detailed health check endpoint.
 #[tracing::instrument(name = "Detailed health check", skip(pool))]
-pub async fn detailed_health_check(
-    pool: web::Data<PgPool>,
-) -> HttpResponse {
+pub async fn detailed_health_check(pool: web::Data<PgPool>) -> HttpResponse {
     let mut checks = HashMap::new();
 
     // Database check

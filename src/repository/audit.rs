@@ -123,6 +123,9 @@ pub async fn count_audit_logs(query: &AuditLogQuery, pool: &PgPool) -> Result<i6
         q = q.bind(resource_type);
     }
 
-    let count = q.fetch_one(pool).await.context("Failed to count audit logs")?;
+    let count = q
+        .fetch_one(pool)
+        .await
+        .context("Failed to count audit logs")?;
     Ok(count)
 }

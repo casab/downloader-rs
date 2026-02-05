@@ -1,4 +1,4 @@
-#![allow(dead_code)]
+#![allow(dead_code, clippy::expect_used, clippy::unwrap_used)]
 
 use argon2::{
     Algorithm, Argon2, Params, PasswordHasher, Version,
@@ -7,12 +7,12 @@ use argon2::{
 use downloader::api::{Application, get_connection_pool};
 use downloader::configuration::{DatabaseSettings, get_configuration};
 use downloader::telemetry::{get_subscriber, init_subscriber};
-use once_cell::sync::Lazy;
 use sqlx::{Connection, Executor, PgConnection, PgPool};
+use std::sync::LazyLock;
 use uuid::Uuid;
 
-// Ensure that the `tracing` stack is only initialised once using `once_cell`
-static TRACING: Lazy<()> = Lazy::new(|| {
+// Ensure that the `tracing` stack is only initialised once using `LazyLock`
+static TRACING: LazyLock<()> = LazyLock::new(|| {
     let default_filter_level = "info".to_string();
     let subscriber_name = "test".to_string();
     if std::env::var("TEST_LOG").is_ok() {
@@ -84,7 +84,7 @@ impl TestApp {
         Body: serde::Serialize,
     {
         self.api_client
-            .post(&format!("{}/api/v1/auth", &self.address))
+            .post(format!("{}/api/v1/auth", &self.address))
             .json(body)
             .header("Content-Type", "application/json")
             .send()
@@ -94,7 +94,7 @@ impl TestApp {
 }
 
 pub async fn spawn_app() -> TestApp {
-    Lazy::force(&TRACING);
+    LazyLock::force(&TRACING);
 
     let configuration = {
         let mut c = get_configuration().expect("Failed to read configuration.");
@@ -109,7 +109,7 @@ pub async fn spawn_app() -> TestApp {
         .await
         .expect("Failed to build application");
     let application_port = application.port();
-    let _ = tokio::spawn(application.run_until_stopped());
+    drop(tokio::spawn(application.run_until_stopped()));
 
     let client = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
@@ -118,7 +118,7 @@ pub async fn spawn_app() -> TestApp {
         .unwrap();
 
     let test_app = TestApp {
-        address: format!("http://127.0.0.1:{}", application_port),
+        address: format!("http://127.0.0.1:{application_port}"),
         port: application_port,
         db_pool: get_connection_pool(&configuration.database),
         test_user: TestUser::generate(),
@@ -131,7 +131,7 @@ pub async fn spawn_app() -> TestApp {
     for _ in 0..50 {
         if test_app
             .api_client
-            .get(&format!("{}/api/v1/health_check", test_app.address))
+            .get(format!("{}/api/v1/health_check", test_app.address))
             .send()
             .await
             .is_ok()

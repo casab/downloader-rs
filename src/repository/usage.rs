@@ -2,7 +2,7 @@
 
 use crate::{
     middlewares::UserId,
-    models::{PeriodType, Usage, UsagePeriodSummary, UsageRow, UsageSummary, StorageUsageSummary},
+    models::{PeriodType, StorageUsageSummary, Usage, UsagePeriodSummary, UsageRow, UsageSummary},
 };
 use anyhow::{Context, Result};
 use chrono::{Datelike, NaiveDate, Utc};
@@ -10,23 +10,16 @@ use sqlx::PgPool;
 
 /// Get or create the current daily usage record for a user.
 #[tracing::instrument(name = "Get or create daily usage", skip(pool))]
-pub async fn get_or_create_daily_usage(
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<Usage> {
+pub async fn get_or_create_daily_usage(user_id: &UserId, pool: &PgPool) -> Result<Usage> {
     let today = Utc::now().date_naive();
     get_or_create_usage(user_id, today, &PeriodType::Daily, pool).await
 }
 
 /// Get or create the current monthly usage record for a user.
 #[tracing::instrument(name = "Get or create monthly usage", skip(pool))]
-pub async fn get_or_create_monthly_usage(
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<Usage> {
+pub async fn get_or_create_monthly_usage(user_id: &UserId, pool: &PgPool) -> Result<Usage> {
     let today = Utc::now().date_naive();
-    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-        .unwrap_or(today);
+    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
     get_or_create_usage(user_id, month_start, &PeriodType::Monthly, pool).await
 }
 
@@ -59,14 +52,9 @@ async fn get_or_create_usage(
 
 /// Increment download count for current day and month.
 #[tracing::instrument(name = "Increment download count", skip(pool))]
-pub async fn increment_download_count(
-    user_id: &UserId,
-    bytes: i64,
-    pool: &PgPool,
-) -> Result<()> {
+pub async fn increment_download_count(user_id: &UserId, bytes: i64, pool: &PgPool) -> Result<()> {
     let today = Utc::now().date_naive();
-    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1)
-        .unwrap_or(today);
+    let month_start = NaiveDate::from_ymd_opt(today.year(), today.month(), 1).unwrap_or(today);
 
     // Update daily
     sqlx::query(
@@ -109,10 +97,7 @@ pub async fn increment_download_count(
 
 /// Increment API request count.
 #[tracing::instrument(name = "Increment API request count", skip(pool))]
-pub async fn increment_api_requests(
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<()> {
+pub async fn increment_api_requests(user_id: &UserId, pool: &PgPool) -> Result<()> {
     let today = Utc::now().date_naive();
 
     sqlx::query(

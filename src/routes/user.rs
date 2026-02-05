@@ -2,7 +2,9 @@
 
 use crate::middlewares::UserId;
 use crate::models::{ChangePasswordRequest, UpdateProfileRequest, UserProfile};
-use crate::repository::{get_user_by_id, soft_delete_user, update_password_hash, update_user_profile};
+use crate::repository::{
+    get_user_by_id, soft_delete_user, update_password_hash, update_user_profile,
+};
 use crate::telemetry::spawn_blocking_with_tracing;
 use crate::utils::{compute_password_hash, e400, e404, e500, verify_password_hash};
 use actix_web::{HttpResponse, web};
@@ -39,29 +41,35 @@ pub async fn update_profile(
 
     // Validate field lengths
     if let Some(ref name) = request.display_name
-        && name.len() > 255 {
-            return Err(e400("Display name cannot exceed 255 characters"));
-        }
+        && name.len() > 255
+    {
+        return Err(e400("Display name cannot exceed 255 characters"));
+    }
     if let Some(ref bio) = request.bio
-        && bio.len() > 1000 {
-            return Err(e400("Bio cannot exceed 1000 characters"));
-        }
+        && bio.len() > 1000
+    {
+        return Err(e400("Bio cannot exceed 1000 characters"));
+    }
     if let Some(ref url) = request.avatar_url
-        && url.len() > 2048 {
-            return Err(e400("Avatar URL cannot exceed 2048 characters"));
-        }
+        && url.len() > 2048
+    {
+        return Err(e400("Avatar URL cannot exceed 2048 characters"));
+    }
 
     // Validate timezone if provided
     if let Some(ref tz) = request.timezone
-        && !is_valid_timezone(tz) {
-            return Err(e400("Invalid timezone"));
-        }
+        && !is_valid_timezone(tz)
+    {
+        return Err(e400("Invalid timezone"));
+    }
 
     // Validate avatar URL if provided
     if let Some(ref url) = request.avatar_url
-        && !url.is_empty() && !is_valid_url(url) {
-            return Err(e400("Invalid avatar URL"));
-        }
+        && !url.is_empty()
+        && !is_valid_url(url)
+    {
+        return Err(e400("Invalid avatar URL"));
+    }
 
     let user = update_user_profile(user_id.0, &request, &pool)
         .await
@@ -136,7 +144,11 @@ pub async fn change_password(
 /// Check if a timezone string is valid (basic validation).
 fn is_valid_timezone(tz: &str) -> bool {
     // Basic validation - could be enhanced with chrono-tz
-    !tz.is_empty() && tz.len() <= 64 && tz.chars().all(|c| c.is_alphanumeric() || c == '/' || c == '_' || c == '-')
+    !tz.is_empty()
+        && tz.len() <= 64
+        && tz
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '/' || c == '_' || c == '-')
 }
 
 /// Check if a URL is valid (basic validation).
