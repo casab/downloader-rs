@@ -53,6 +53,7 @@ pub struct BulkOperationResponse {
 impl BulkOperationResponse {
     /// Create a response for a fully successful operation.
     #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn all_success(ids: Vec<Uuid>) -> Self {
         Self {
             success_count: ids.len() as i64,
@@ -64,6 +65,7 @@ impl BulkOperationResponse {
 
     /// Create a response for a fully failed operation.
     #[must_use]
+    #[allow(clippy::cast_possible_wrap)]
     pub fn all_failed(failures: Vec<BulkOperationFailure>) -> Self {
         Self {
             success_count: 0,

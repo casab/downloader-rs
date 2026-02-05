@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 /// Configuration for bandwidth throttling.
 #[derive(Debug, Clone, Deserialize)]
+#[derive(Default)]
 pub struct ThrottleConfig {
     /// Per-download speed limit in bytes per second (0 = unlimited).
     #[serde(default)]
@@ -19,15 +20,6 @@ pub struct ThrottleConfig {
     pub global_bytes_per_sec: u64,
 }
 
-impl Default for ThrottleConfig {
-    fn default() -> Self {
-        Self {
-            per_download_bytes_per_sec: 0,        // Unlimited
-            per_user_bytes_per_sec: 0,             // Unlimited
-            global_bytes_per_sec: 0,               // Unlimited
-        }
-    }
-}
 
 /// Token bucket rate limiter for bandwidth throttling.
 #[derive(Debug)]
@@ -48,6 +40,7 @@ impl TokenBucket {
     /// - `rate`: tokens per second (bytes per second)
     /// - `burst`: maximum burst size in tokens (bytes)
     #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn new(rate: u64, burst: u64) -> Self {
         Self {
             capacity: burst,
@@ -58,6 +51,7 @@ impl TokenBucket {
     }
 
     /// Refill tokens based on elapsed time.
+    #[allow(clippy::cast_precision_loss)]
     fn refill(&mut self) {
         let now = Instant::now();
         let elapsed = now.duration_since(self.last_refill).as_secs_f64();
@@ -66,6 +60,7 @@ impl TokenBucket {
     }
 
     /// Try to consume tokens. Returns how many tokens were consumed.
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn try_consume(&mut self, requested: u64) -> u64 {
         self.refill();
 
@@ -77,6 +72,7 @@ impl TokenBucket {
 
     /// Get the time to wait until `requested` tokens are available.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn time_to_available(&mut self, requested: u64) -> Duration {
         self.refill();
 
@@ -91,6 +87,7 @@ impl TokenBucket {
 
     /// Get remaining tokens.
     #[must_use]
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn available(&mut self) -> u64 {
         self.refill();
         self.tokens as u64

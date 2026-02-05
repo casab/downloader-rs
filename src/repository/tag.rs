@@ -9,9 +9,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// All columns for tag queries.
-const TAG_COLUMNS: &str = r#"
+const TAG_COLUMNS: &str = r"
     id, user_id, name, color, created_at
-"#;
+";
 
 /// Get a tag by ID.
 #[tracing::instrument(name = "Get tag by ID", skip(pool))]
@@ -78,11 +78,11 @@ pub async fn create_tag(
     pool: &PgPool,
 ) -> Result<Tag> {
     let query = format!(
-        r#"
+        r"
         INSERT INTO tags (id, user_id, name, color)
         VALUES ($1, $2, $3, $4)
         RETURNING {TAG_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, TagRow>(&query)
@@ -107,12 +107,12 @@ pub async fn update_tag(
     pool: &PgPool,
 ) -> Result<Tag> {
     let query = format!(
-        r#"
+        r"
         UPDATE tags
         SET name = COALESCE($3, name), color = COALESCE($4, color)
         WHERE id = $1 AND user_id = $2
         RETURNING {TAG_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, TagRow>(&query)
@@ -153,7 +153,7 @@ pub async fn delete_tag(
 /// Get all tags for a user with usage counts.
 #[tracing::instrument(name = "Get user tags", skip(pool))]
 pub async fn get_user_tags(user_id: &UserId, pool: &PgPool) -> Result<Vec<TagWithCount>> {
-    let query = r#"
+    let query = r"
         SELECT
             t.id, t.user_id, t.name, t.color, t.created_at,
             COUNT(dt.download_id) as download_count
@@ -162,7 +162,7 @@ pub async fn get_user_tags(user_id: &UserId, pool: &PgPool) -> Result<Vec<TagWit
         WHERE t.user_id = $1
         GROUP BY t.id
         ORDER BY t.name ASC
-    "#;
+    ";
 
     let rows = sqlx::query_as::<_, TagWithCountRow>(query)
         .bind(user_id.0)
@@ -203,7 +203,9 @@ pub async fn add_tags_to_download(
     .fetch_one(pool)
     .await?;
 
-    if tags_check != tag_ids.len() as i64 {
+    #[allow(clippy::cast_possible_wrap)]
+    let expected_tag_count = tag_ids.len() as i64;
+    if tags_check != expected_tag_count {
         return Err(anyhow::anyhow!("One or more tags not found"));
     }
 
@@ -211,11 +213,11 @@ pub async fn add_tags_to_download(
     let mut added = 0i64;
     for tag_id in tag_ids {
         let result = sqlx::query(
-            r#"
+            r"
             INSERT INTO download_tags (download_id, tag_id)
             VALUES ($1, $2)
             ON CONFLICT (download_id, tag_id) DO NOTHING
-            "#,
+            ",
         )
         .bind(download_id)
         .bind(tag_id)
@@ -223,7 +225,9 @@ pub async fn add_tags_to_download(
         .await
         .context("Failed to add tag to download")?;
 
-        added += result.rows_affected() as i64;
+        #[allow(clippy::cast_possible_wrap)]
+        let affected = result.rows_affected() as i64;
+        added += affected;
     }
 
     Ok(added)
@@ -273,13 +277,13 @@ pub async fn get_download_tags(
     pool: &PgPool,
 ) -> Result<Vec<Tag>> {
     let query = format!(
-        r#"
+        r"
         SELECT {TAG_COLUMNS}
         FROM tags t
         JOIN download_tags dt ON dt.tag_id = t.id
         WHERE dt.download_id = $1
         ORDER BY t.name ASC
-        "#
+        "
     );
 
     let rows = sqlx::query_as::<_, TagRow>(&query)
@@ -308,7 +312,9 @@ pub async fn bulk_add_tags(
     .fetch_one(pool)
     .await?;
 
-    if downloads_check != download_ids.len() as i64 {
+    #[allow(clippy::cast_possible_wrap)]
+    let expected_download_count = download_ids.len() as i64;
+    if downloads_check != expected_download_count {
         return Err(anyhow::anyhow!("One or more downloads not found"));
     }
 
@@ -321,7 +327,9 @@ pub async fn bulk_add_tags(
     .fetch_one(pool)
     .await?;
 
-    if tags_check != tag_ids.len() as i64 {
+    #[allow(clippy::cast_possible_wrap)]
+    let expected_tag_count = tag_ids.len() as i64;
+    if tags_check != expected_tag_count {
         return Err(anyhow::anyhow!("One or more tags not found"));
     }
 
@@ -330,11 +338,11 @@ pub async fn bulk_add_tags(
     for download_id in download_ids {
         for tag_id in tag_ids {
             let result = sqlx::query(
-                r#"
+                r"
                 INSERT INTO download_tags (download_id, tag_id)
                 VALUES ($1, $2)
                 ON CONFLICT (download_id, tag_id) DO NOTHING
-                "#,
+                ",
             )
             .bind(download_id)
             .bind(tag_id)
@@ -342,7 +350,9 @@ pub async fn bulk_add_tags(
             .await
             .context("Failed to add tag to download")?;
 
-            added += result.rows_affected() as i64;
+            #[allow(clippy::cast_possible_wrap)]
+            let affected = result.rows_affected() as i64;
+            added += affected;
         }
     }
 
@@ -366,15 +376,17 @@ pub async fn bulk_remove_tags(
     .fetch_one(pool)
     .await?;
 
-    if downloads_check != download_ids.len() as i64 {
+    #[allow(clippy::cast_possible_wrap)]
+    let expected_download_count = download_ids.len() as i64;
+    if downloads_check != expected_download_count {
         return Err(anyhow::anyhow!("One or more downloads not found"));
     }
 
     let result = sqlx::query(
-        r#"
+        r"
         DELETE FROM download_tags
         WHERE download_id = ANY($1) AND tag_id = ANY($2)
-        "#,
+        ",
     )
     .bind(download_ids)
     .bind(tag_ids)
@@ -382,7 +394,9 @@ pub async fn bulk_remove_tags(
     .await
     .context("Failed to remove tags from downloads")?;
 
-    Ok(result.rows_affected() as i64)
+    #[allow(clippy::cast_possible_wrap)]
+    let count = result.rows_affected() as i64;
+    Ok(count)
 }
 
 /// Helper row type for tag with count.

@@ -21,11 +21,11 @@ fn escape_ilike(input: &str) -> String {
 }
 
 /// All columns for download queries.
-const DOWNLOAD_COLUMNS: &str = r#"
+const DOWNLOAD_COLUMNS: &str = r"
     id, url, status, file_path, user_id, bytes_downloaded, total_bytes,
     content_type, filename, error_message, retry_count, max_retries,
     priority, started_at, metadata, created_at, updated_at, completed_at
-"#;
+";
 
 /// Get a download by ID.
 #[tracing::instrument(name = "Get download by ID", skip(pool))]
@@ -74,11 +74,11 @@ pub async fn create_download(
     pool: &PgPool,
 ) -> Result<Download> {
     let query = format!(
-        r#"
+        r"
         INSERT INTO downloads (id, url, status, user_id, priority, max_retries)
         VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING {DOWNLOAD_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, DownloadRow>(&query)
@@ -107,7 +107,7 @@ pub async fn update_download_status(
     // Fetch current status and validate the transition
     let current = get_download_by_id(download_id, pool)
         .await?
-        .ok_or_else(|| anyhow::anyhow!("Download not found: {}", download_id))?;
+        .ok_or_else(|| anyhow::anyhow!("Download not found: {download_id}"))?;
 
     if !current.status.can_transition_to(&new_status) {
         return Err(anyhow::anyhow!(
@@ -119,36 +119,36 @@ pub async fn update_download_status(
 
     let query = match new_status {
         DownloadStatus::Completed => format!(
-            r#"
+            r"
             UPDATE downloads
             SET status = $2, file_path = $3, completed_at = NOW(), updated_at = NOW()
             WHERE id = $1
             RETURNING {DOWNLOAD_COLUMNS}
-            "#
+            "
         ),
         DownloadStatus::Failed => format!(
-            r#"
+            r"
             UPDATE downloads
             SET status = $2, error_message = $3, retry_count = retry_count + 1, updated_at = NOW()
             WHERE id = $1
             RETURNING {DOWNLOAD_COLUMNS}
-            "#
+            "
         ),
         DownloadStatus::InProgress => format!(
-            r#"
+            r"
             UPDATE downloads
             SET status = $2, started_at = COALESCE(started_at, NOW()), updated_at = NOW()
             WHERE id = $1
             RETURNING {DOWNLOAD_COLUMNS}
-            "#
+            "
         ),
         _ => format!(
-            r#"
+            r"
             UPDATE downloads
             SET status = $2, updated_at = NOW()
             WHERE id = $1
             RETURNING {DOWNLOAD_COLUMNS}
-            "#
+            "
         ),
     };
 
@@ -191,11 +191,11 @@ pub async fn update_download_progress(
     pool: &PgPool,
 ) -> Result<()> {
     sqlx::query(
-        r#"
+        r"
         UPDATE downloads
         SET bytes_downloaded = $2, total_bytes = COALESCE($3, total_bytes), updated_at = NOW()
         WHERE id = $1
-        "#,
+        ",
     )
     .bind(download_id)
     .bind(bytes_downloaded)
@@ -223,12 +223,12 @@ pub async fn resume_download(download_id: Uuid, pool: &PgPool) -> Result<Downloa
 #[tracing::instrument(name = "Retry download", skip(pool))]
 pub async fn retry_download(download_id: Uuid, pool: &PgPool) -> Result<Download> {
     let query = format!(
-        r#"
+        r"
         UPDATE downloads
         SET status = $2, error_message = NULL, updated_at = NOW()
         WHERE id = $1
         RETURNING {DOWNLOAD_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, DownloadRow>(&query)

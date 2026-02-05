@@ -29,6 +29,7 @@ impl DownloadJobHandler {
     }
 
     /// Publish progress update via Redis Pub/Sub.
+    #[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss)]
     async fn publish_progress(
         &self,
         download_id: uuid::Uuid,
@@ -45,7 +46,7 @@ impl DownloadJobHandler {
             "timestamp": chrono::Utc::now().to_rfc3339(),
         });
 
-        let channel = format!("download:progress:{}", download_id);
+        let channel = format!("download:progress:{download_id}");
         let _: () = conn.publish(channel, progress.to_string()).await?;
 
         Ok(())
@@ -67,6 +68,7 @@ impl DownloadJobHandler {
         let file_path = download_file(&payload.url, Some((*self.s3_client).clone())).await?;
 
         // Get file size (may not exist locally when using S3 storage)
+        #[allow(clippy::cast_possible_wrap)]
         let total_bytes = match tokio::fs::metadata(&file_path).await {
             Ok(metadata) => metadata.len() as i64,
             Err(_) => 0, // File is on remote storage, size unavailable from local FS

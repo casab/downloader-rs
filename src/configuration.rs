@@ -70,6 +70,7 @@ impl DatabaseSettings {
     }
 }
 
+#[allow(clippy::expect_used)]
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
     let base_path = std::env::current_dir().expect("Failed to determine the current directory");
     let configuration_directory = base_path.join("configuration");
@@ -121,8 +122,7 @@ impl TryFrom<String> for Environment {
             "local" => Ok(Environment::Local),
             "production" => Ok(Environment::Production),
             other => Err(format!(
-                "{} is not a supported environment. Use either 'local' or 'production'.",
-                other
+                "{other} is not a supported environment. Use either 'local' or 'production'."
             )),
         }
     }

@@ -22,7 +22,7 @@ impl TypedSession {
     }
 
     pub fn log_out(self) {
-        self.0.purge()
+        self.0.purge();
     }
 }
 

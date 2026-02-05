@@ -76,6 +76,7 @@ pub async fn detailed_health_check(
     }
 }
 
+#[allow(clippy::cast_possible_truncation)]
 async fn check_database(pool: &PgPool) -> ComponentHealth {
     let start = Instant::now();
     match sqlx::query_scalar::<_, i32>("SELECT 1")

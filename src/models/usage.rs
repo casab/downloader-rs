@@ -78,8 +78,8 @@ impl std::fmt::Display for PeriodType {
 impl From<String> for PeriodType {
     fn from(s: String) -> Self {
         match s.to_lowercase().as_str() {
-            "daily" => Self::Daily,
             "monthly" => Self::Monthly,
+            // "daily" and any unrecognized period type default to Daily
             _ => Self::Daily,
         }
     }

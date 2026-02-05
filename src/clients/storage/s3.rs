@@ -64,6 +64,7 @@ impl StorageProvider for S3StorageProvider {
         }
     }
 
+    #[allow(clippy::cast_possible_truncation)]
     async fn get_url(&self, key: &str, expires_in: Duration) -> Result<String> {
         let url = self
             .bucket
@@ -74,6 +75,7 @@ impl StorageProvider for S3StorageProvider {
         Ok(url)
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     async fn list(&self, prefix: &str) -> Result<Vec<StorageObject>> {
         let results = self
             .bucket

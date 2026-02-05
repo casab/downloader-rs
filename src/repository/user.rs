@@ -9,12 +9,12 @@ use uuid::Uuid;
 #[tracing::instrument(name = "Get user by ID", skip(pool))]
 pub async fn get_user_by_id(user_id: Uuid, pool: &PgPool) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        r#"
+        r"
         SELECT id, email, password_hash, display_name, avatar_url, bio, timezone,
                email_verified_at, deleted_at, created_at, updated_at
         FROM users
         WHERE id = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -28,12 +28,12 @@ pub async fn get_user_by_id(user_id: Uuid, pool: &PgPool) -> Result<Option<User>
 #[tracing::instrument(name = "Get user by email", skip(pool))]
 pub async fn get_user_by_email(email: &str, pool: &PgPool) -> Result<Option<User>> {
     let row = sqlx::query_as::<_, UserRow>(
-        r#"
+        r"
         SELECT id, email, password_hash, display_name, avatar_url, bio, timezone,
                email_verified_at, deleted_at, created_at, updated_at
         FROM users
         WHERE email = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -51,7 +51,7 @@ pub async fn update_user_profile(
     pool: &PgPool,
 ) -> Result<User> {
     let row = sqlx::query_as::<_, UserRow>(
-        r#"
+        r"
         UPDATE users
         SET display_name = COALESCE($2, display_name),
             avatar_url = COALESCE($3, avatar_url),
@@ -61,7 +61,7 @@ pub async fn update_user_profile(
         WHERE id = $1 AND deleted_at IS NULL
         RETURNING id, email, password_hash, display_name, avatar_url, bio, timezone,
                   email_verified_at, deleted_at, created_at, updated_at
-        "#,
+        ",
     )
     .bind(user_id)
     .bind(&request.display_name)
@@ -79,12 +79,12 @@ pub async fn update_user_profile(
 #[tracing::instrument(name = "Soft delete user", skip(pool))]
 pub async fn soft_delete_user(user_id: Uuid, pool: &PgPool) -> Result<()> {
     let result = sqlx::query(
-        r#"
+        r"
         UPDATE users
         SET deleted_at = NOW(),
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(user_id)
     .execute(pool)
@@ -102,12 +102,12 @@ pub async fn soft_delete_user(user_id: Uuid, pool: &PgPool) -> Result<()> {
 #[tracing::instrument(name = "Verify user email", skip(pool))]
 pub async fn mark_email_verified(user_id: Uuid, pool: &PgPool) -> Result<()> {
     sqlx::query(
-        r#"
+        r"
         UPDATE users
         SET email_verified_at = NOW(),
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(user_id)
     .execute(pool)
@@ -125,12 +125,12 @@ pub async fn update_password_hash(
     pool: &PgPool,
 ) -> Result<()> {
     sqlx::query(
-        r#"
+        r"
         UPDATE users
         SET password_hash = $2,
             updated_at = NOW()
         WHERE id = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(user_id)
     .bind(password_hash)

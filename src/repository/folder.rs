@@ -9,9 +9,9 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// All columns for folder queries.
-const FOLDER_COLUMNS: &str = r#"
+const FOLDER_COLUMNS: &str = r"
     id, user_id, parent_id, name, path, created_at, updated_at
-"#;
+";
 
 /// Get a folder by ID.
 #[tracing::instrument(name = "Get folder by ID", skip(pool))]
@@ -84,15 +84,15 @@ pub async fn create_folder(
             .ok_or_else(|| anyhow::anyhow!("Parent folder not found"))?;
         format!("{}/{}", parent.path, name)
     } else {
-        format!("/{}", name)
+        format!("/{name}")
     };
 
     let query = format!(
-        r#"
+        r"
         INSERT INTO folders (id, user_id, parent_id, name, path)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING {FOLDER_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, FolderRow>(&query)
@@ -123,9 +123,9 @@ pub async fn update_folder_name(
 
     // Calculate new path
     let new_path = if let Some(parent_path) = folder.parent_path() {
-        format!("{}/{}", parent_path, name)
+        format!("{parent_path}/{name}")
     } else {
-        format!("/{}", name)
+        format!("/{name}")
     };
 
     // Update this folder and all descendants
@@ -133,12 +133,12 @@ pub async fn update_folder_name(
 
     // Update the folder itself
     let query = format!(
-        r#"
+        r"
         UPDATE folders
         SET name = $3, path = $4, updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING {FOLDER_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, FolderRow>(&query)
@@ -152,11 +152,11 @@ pub async fn update_folder_name(
 
     // Update all descendant paths
     sqlx::query(
-        r#"
+        r"
         UPDATE folders
         SET path = $3 || substring(path from length($1) + 1), updated_at = NOW()
         WHERE user_id = $2 AND path LIKE $1 || '/%'
-        "#,
+        ",
     )
     .bind(old_path)
     .bind(user_id.0)
@@ -210,12 +210,12 @@ pub async fn move_folder(
 
     // Update the folder itself
     let query = format!(
-        r#"
+        r"
         UPDATE folders
         SET parent_id = $3, path = $4, updated_at = NOW()
         WHERE id = $1 AND user_id = $2
         RETURNING {FOLDER_COLUMNS}
-        "#
+        "
     );
 
     let row = sqlx::query_as::<_, FolderRow>(&query)
@@ -229,11 +229,11 @@ pub async fn move_folder(
 
     // Update all descendant paths
     sqlx::query(
-        r#"
+        r"
         UPDATE folders
         SET path = $3 || substring(path from length($1) + 1), updated_at = NOW()
         WHERE user_id = $2 AND path LIKE $1 || '/%'
-        "#,
+        ",
     )
     .bind(old_path)
     .bind(user_id.0)
@@ -254,11 +254,11 @@ pub async fn delete_folder(
 ) -> Result<()> {
     // First, set all downloads in this folder to no folder
     sqlx::query(
-        r#"
+        r"
         UPDATE downloads
         SET folder_id = NULL
         WHERE folder_id = $1 AND user_id = $2
-        "#,
+        ",
     )
     .bind(folder_id)
     .bind(user_id.0)
@@ -286,7 +286,7 @@ pub async fn delete_folder(
 /// Get all root folders for a user.
 #[tracing::instrument(name = "Get root folders", skip(pool))]
 pub async fn get_root_folders(user_id: &UserId, pool: &PgPool) -> Result<Vec<FolderWithCounts>> {
-    let query = r#"
+    let query = r"
         SELECT
             f.id, f.user_id, f.parent_id, f.name, f.path, f.created_at, f.updated_at,
             (SELECT COUNT(*) FROM folders WHERE parent_id = f.id) as subfolder_count,
@@ -294,7 +294,7 @@ pub async fn get_root_folders(user_id: &UserId, pool: &PgPool) -> Result<Vec<Fol
         FROM folders f
         WHERE f.user_id = $1 AND f.parent_id IS NULL
         ORDER BY f.name ASC
-    "#;
+    ";
 
     let rows = sqlx::query_as::<_, FolderWithCountsRow>(query)
         .bind(user_id.0)
@@ -312,14 +312,14 @@ pub async fn get_folder_with_contents(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Option<FolderWithCounts>> {
-    let query = r#"
+    let query = r"
         SELECT
             f.id, f.user_id, f.parent_id, f.name, f.path, f.created_at, f.updated_at,
             (SELECT COUNT(*) FROM folders WHERE parent_id = f.id) as subfolder_count,
             (SELECT COUNT(*) FROM downloads WHERE folder_id = f.id) as download_count
         FROM folders f
         WHERE f.id = $1 AND f.user_id = $2
-    "#;
+    ";
 
     let row = sqlx::query_as::<_, FolderWithCountsRow>(query)
         .bind(folder_id)
@@ -338,7 +338,7 @@ pub async fn get_subfolders(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Vec<FolderWithCounts>> {
-    let query = r#"
+    let query = r"
         SELECT
             f.id, f.user_id, f.parent_id, f.name, f.path, f.created_at, f.updated_at,
             (SELECT COUNT(*) FROM folders WHERE parent_id = f.id) as subfolder_count,
@@ -346,7 +346,7 @@ pub async fn get_subfolders(
         FROM folders f
         WHERE f.parent_id = $1 AND f.user_id = $2
         ORDER BY f.name ASC
-    "#;
+    ";
 
     let rows = sqlx::query_as::<_, FolderWithCountsRow>(query)
         .bind(folder_id)
@@ -374,11 +374,11 @@ pub async fn move_downloads_to_folder(
     }
 
     let result = sqlx::query(
-        r#"
+        r"
         UPDATE downloads
         SET folder_id = $1, updated_at = NOW()
         WHERE id = ANY($2) AND user_id = $3
-        "#,
+        ",
     )
     .bind(folder_id)
     .bind(download_ids)
@@ -387,7 +387,9 @@ pub async fn move_downloads_to_folder(
     .await
     .context("Failed to move downloads to folder")?;
 
-    Ok(result.rows_affected() as i64)
+    #[allow(clippy::cast_possible_wrap)]
+    let count = result.rows_affected() as i64;
+    Ok(count)
 }
 
 /// Helper row type for folder with counts.

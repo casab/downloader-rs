@@ -129,6 +129,7 @@ impl RateLimiter {
         let retry_after = if allowed {
             None
         } else {
+            #[allow(clippy::cast_sign_loss)]
             let seconds_until_reset = (reset_at - now).num_seconds().max(1) as u64;
             Some(Duration::from_secs(seconds_until_reset))
         };
@@ -191,12 +192,12 @@ pub async fn rate_limit_middleware(
     let key = req
         .extensions()
         .get::<super::UserId>()
-        .map(|uid| format!("user:{}", uid.0))
-        .unwrap_or_else(|| {
-            req.peer_addr()
-                .map(|addr| format!("ip:{}", addr.ip()))
-                .unwrap_or_else(|| "ip:unknown".to_string())
-        });
+        .map_or_else(
+            || {
+                req.peer_addr().map_or_else(|| "ip:unknown".to_string(), |addr| format!("ip:{}", addr.ip()))
+            },
+            |uid| format!("user:{}", uid.0),
+        );
 
     match limiter.check(&key).await {
         Ok(result) if !result.allowed => {

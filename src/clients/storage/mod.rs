@@ -81,6 +81,7 @@ impl StorageQuota {
 
     /// Get usage percentage (0.0 - 100.0).
     #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn usage_percentage(&self) -> f64 {
         if self.quota_bytes == 0 {
             return 0.0;
@@ -147,22 +148,19 @@ pub async fn create_storage_provider(
     config: &StorageConfig,
     s3_settings: Option<&crate::configuration::S3Settings>,
 ) -> anyhow::Result<Box<dyn StorageProvider>> {
-    match config.provider.as_str() {
-        "s3" => {
-            let s3_config = s3_settings
-                .ok_or_else(|| anyhow::anyhow!("S3 settings required when provider is 's3'"))?;
-            let bucket = crate::clients::get_s3_client(s3_config.clone())
-                .await
-                .map_err(|e| anyhow::anyhow!("Failed to create S3 client: {e}"))?;
-            Ok(Box::new(S3StorageProvider::new(bucket)))
-        }
-        "local" | _ => {
-            let local_config = config.local.as_ref().cloned().unwrap_or(LocalStorageConfig {
-                base_path: "/var/downloads".to_string(),
-            });
-            let provider = LocalStorageProvider::new(&local_config).await?;
-            Ok(Box::new(provider))
-        }
+    if config.provider.as_str() == "s3" {
+        let s3_config = s3_settings
+            .ok_or_else(|| anyhow::anyhow!("S3 settings required when provider is 's3'"))?;
+        let bucket = crate::clients::get_s3_client(s3_config.clone())
+            .await
+            .map_err(|e| anyhow::anyhow!("Failed to create S3 client: {e}"))?;
+        Ok(Box::new(S3StorageProvider::new(bucket)))
+    } else {
+        let local_config = config.local.clone().unwrap_or(LocalStorageConfig {
+            base_path: "/var/downloads".to_string(),
+        });
+        let provider = LocalStorageProvider::new(&local_config).await?;
+        Ok(Box::new(provider))
     }
 }
 

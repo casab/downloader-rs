@@ -8,6 +8,7 @@ use crate::repository::{
     resume_download as repo_resume, retry_download as repo_retry, update_download_status,
 };
 use crate::utils::{download_file, e400, e404, e500};
+use manic::ManicError;
 use actix_web::{HttpResponse, web};
 use sqlx::PgPool;
 use std::net::IpAddr;
@@ -52,7 +53,7 @@ pub async fn download(
             if let Some(ref publisher) = event_publisher {
                 let event = Event::new("download.completed", DownloadCompleted {
                     download_id: download.id,
-                    url: file_link.to_string(),
+                    url: file_link.clone(),
                     user_id: uid.0,
                     file_path,
                     bytes: updated.bytes_downloaded,
@@ -79,7 +80,7 @@ pub async fn download(
             if let Some(ref publisher) = event_publisher {
                 let event = Event::new("download.failed", DownloadFailed {
                     download_id: download.id,
-                    url: file_link.to_string(),
+                    url: file_link.clone(),
                     user_id: uid.0,
                     error: err.to_string(),
                     attempts: 1,
@@ -87,7 +88,6 @@ pub async fn download(
                 let _ = publisher.publish_auto(event).await;
             }
 
-            use manic::ManicError;
             return match err {
                 ManicError::NotFound => Err(e404("Failed to find the file")),
                 _ => Err(e500("Failed to download the file")),
@@ -285,7 +285,7 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
 
     match host {
         url::Host::Ipv4(ip) => {
-            if is_private_ipv4(&ip) {
+            if is_private_ipv4(ip) {
                 return Err(
                     "Access to internal/private network addresses is not allowed".to_string(),
                 );
@@ -311,7 +311,7 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
 
             for addr in addrs {
                 match addr.ip() {
-                    IpAddr::V4(ip) if is_private_ipv4(&ip) => {
+                    IpAddr::V4(ip) if is_private_ipv4(ip) => {
                         return Err(
                             "URL resolves to an internal/private network address".to_string(),
                         );
@@ -330,7 +330,7 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn is_private_ipv4(ip: &std::net::Ipv4Addr) -> bool {
+fn is_private_ipv4(ip: std::net::Ipv4Addr) -> bool {
     ip.is_loopback()
         || ip.is_private()
         || ip.is_link_local()
@@ -344,5 +344,5 @@ fn is_private_ipv6(ip: &std::net::Ipv6Addr) -> bool {
     ip.is_loopback()
         || ip.is_unspecified()
         // Check for IPv4-mapped IPv6 addresses (e.g., ::ffff:127.0.0.1)
-        || ip.to_ipv4_mapped().is_some_and(|ipv4| is_private_ipv4(&ipv4))
+        || ip.to_ipv4_mapped().is_some_and(is_private_ipv4)
 }

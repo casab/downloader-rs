@@ -123,10 +123,10 @@ impl RedisStreamsQueue {
         };
 
         sqlx::query(
-            r#"
+            r"
             INSERT INTO job_history (id, stream_message_id, job_type, status, payload, priority, user_id, created_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-            "#,
+            ",
         )
         .bind(job.id)
         .bind(message_id)
@@ -162,11 +162,11 @@ impl RedisStreamsQueue {
         match status {
             JobStatus::Running => {
                 sqlx::query(
-                    r#"
+                    r"
                     UPDATE job_history
                     SET status = $2, worker_id = $3, started_at = $4, attempts = attempts + 1
                     WHERE id = $1
-                    "#,
+                    ",
                 )
                 .bind(job_id)
                 .bind(status.to_string())
@@ -177,11 +177,11 @@ impl RedisStreamsQueue {
             }
             JobStatus::Completed => {
                 sqlx::query(
-                    r#"
+                    r"
                     UPDATE job_history
                     SET status = $2, result = $3, completed_at = $4
                     WHERE id = $1
-                    "#,
+                    ",
                 )
                 .bind(job_id)
                 .bind(status.to_string())
@@ -192,11 +192,11 @@ impl RedisStreamsQueue {
             }
             JobStatus::Failed => {
                 sqlx::query(
-                    r#"
+                    r"
                     UPDATE job_history
                     SET status = $2, error_message = $3, completed_at = $4
                     WHERE id = $1
-                    "#,
+                    ",
                 )
                 .bind(job_id)
                 .bind(status.to_string())
@@ -207,11 +207,11 @@ impl RedisStreamsQueue {
             }
             _ => {
                 sqlx::query(
-                    r#"
+                    r"
                     UPDATE job_history
                     SET status = $2
                     WHERE id = $1
-                    "#,
+                    ",
                 )
                 .bind(job_id)
                 .bind(status.to_string())
@@ -233,7 +233,7 @@ impl RedisStreamsQueue {
                     redis::Value::SimpleString(s) => Some(s.clone()),
                     _ => None,
                 })
-                .ok_or_else(|| anyhow::anyhow!("Missing or invalid field: {}", key))
+                .ok_or_else(|| anyhow::anyhow!("Missing or invalid field: {key}"))
         };
 
         let id: Uuid = get_string("id")?.parse()?;
@@ -250,7 +250,7 @@ impl RedisStreamsQueue {
             "cleanup" => JobType::Cleanup,
             "notification" => JobType::Notification,
             "webhook" => JobType::Webhook,
-            _ => return Err(anyhow::anyhow!("Unknown job type: {}", job_type_str)),
+            _ => return Err(anyhow::anyhow!("Unknown job type: {job_type_str}")),
         };
 
         let payload: serde_json::Value = serde_json::from_str(&payload_str)?;
@@ -295,20 +295,22 @@ impl RedisStreamsQueue {
                 .await?;
 
             // Parse pending response
-            if let redis::Value::Array(entries) = pending {
-                if let Some(redis::Value::Array(entry)) = entries.first() {
-                    if entry.len() >= 3 {
+            if let redis::Value::Array(entries) = pending
+                && let Some(redis::Value::Array(entry)) = entries.first()
+                    && entry.len() >= 3 {
                         let message_id = match &entry[0] {
                             redis::Value::BulkString(bytes) => String::from_utf8_lossy(bytes).to_string(),
                             _ => continue,
                         };
 
+                        #[allow(clippy::cast_sign_loss)]
                         let idle_time = match &entry[2] {
                             redis::Value::Int(ms) => *ms as u64,
                             _ => continue,
                         };
 
                         // Get delivery count (entry[3]) to track actual retry attempts
+                        #[allow(clippy::cast_possible_truncation)]
                         let delivery_count = if entry.len() >= 4 {
                             match &entry[3] {
                                 redis::Value::Int(n) => *n as i32,
@@ -329,9 +331,9 @@ impl RedisStreamsQueue {
                                 .query_async(conn)
                                 .await?;
 
-                            if let redis::Value::Array(messages) = claimed {
-                                if let Some(redis::Value::Array(msg)) = messages.first() {
-                                    if msg.len() >= 2 {
+                            if let redis::Value::Array(messages) = claimed
+                                && let Some(redis::Value::Array(msg)) = messages.first()
+                                    && msg.len() >= 2 {
                                         let fields = self.parse_stream_fields(&msg[1])?;
                                         tracing::warn!(
                                             delivery_count = delivery_count,
@@ -343,18 +345,15 @@ impl RedisStreamsQueue {
                                         job.attempts = delivery_count;
                                         return Ok(Some(job));
                                     }
-                                }
-                            }
                         }
                     }
-                }
-            }
         }
 
         Ok(None)
     }
 
     /// Parse stream message fields from Redis value.
+    #[allow(clippy::unused_self, clippy::unnecessary_wraps)]
     fn parse_stream_fields(&self, value: &redis::Value) -> Result<HashMap<String, redis::Value>> {
         let mut fields = HashMap::new();
 
@@ -458,6 +457,7 @@ impl JobQueue for RedisStreamsQueue {
         let ids: Vec<&str> = vec![">"; streams.len()];
 
         // Read new messages with XREADGROUP
+        #[allow(clippy::cast_possible_truncation)]
         let opts = StreamReadOptions::default()
             .group(&self.config.consumer_group, worker_id)
             .block(self.config.block_ms as usize)

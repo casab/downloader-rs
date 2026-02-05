@@ -6,6 +6,7 @@ use crate::models::{
 };
 use anyhow::{Context, Result};
 use sqlx::PgPool;
+use std::fmt::Write;
 use uuid::Uuid;
 
 /// Check if a user is an admin.
@@ -30,12 +31,12 @@ pub async fn list_all_users(
     pool: &PgPool,
 ) -> Result<Vec<AdminUserRow>> {
     let users = sqlx::query_as::<_, AdminUserRow>(
-        r#"
+        r"
         SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
         FROM users
         ORDER BY created_at DESC
         LIMIT $1 OFFSET $2
-        "#,
+        ",
     )
     .bind(limit)
     .bind(offset)
@@ -64,10 +65,10 @@ pub async fn get_user_by_id_admin(
     pool: &PgPool,
 ) -> Result<Option<AdminUserRow>> {
     let user = sqlx::query_as::<_, AdminUserRow>(
-        r#"
+        r"
         SELECT id, email, display_name, is_admin, email_verified_at, created_at, updated_at
         FROM users WHERE id = $1
-        "#,
+        ",
     )
     .bind(user_id)
     .fetch_optional(pool)
@@ -89,15 +90,15 @@ pub async fn admin_update_user(
 
     if req.is_admin.is_some() {
         param_count += 1;
-        query.push_str(&format!(", is_admin = ${param_count}"));
+        let _ = write!(query, ", is_admin = ${param_count}");
     }
     if req.email_verified.is_some() {
         param_count += 1;
-        query.push_str(&format!(", email_verified_at = CASE WHEN ${param_count} THEN NOW() ELSE NULL END"));
+        let _ = write!(query, ", email_verified_at = CASE WHEN ${param_count} THEN NOW() ELSE NULL END");
     }
 
     param_count += 1;
-    query.push_str(&format!(" WHERE id = ${param_count}"));
+    let _ = write!(query, " WHERE id = ${param_count}");
 
     let mut q = sqlx::query(&query);
 

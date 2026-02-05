@@ -141,6 +141,7 @@ pub struct AdminAction {
 
 /// Kafka producer configuration.
 #[derive(Debug, Clone, Deserialize)]
+#[derive(Default)]
 pub struct EventsConfig {
     #[serde(default)]
     pub enabled: bool,
@@ -189,14 +190,6 @@ fn default_batch_size() -> u32 {
     16384
 }
 
-impl Default for EventsConfig {
-    fn default() -> Self {
-        Self {
-            enabled: false,
-            kafka: KafkaConfig::default(),
-        }
-    }
-}
 
 impl Default for KafkaConfig {
     fn default() -> Self {

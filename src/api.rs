@@ -58,7 +58,7 @@ impl Application {
             configuration.application.host, configuration.application.port
         );
         let listener = TcpListener::bind(address)?;
-        let port = listener.local_addr().unwrap().port();
+        let port = listener.local_addr()?.port();
         let (server, worker_pool) = run(
             listener,
             connection_pool,
@@ -96,6 +96,7 @@ pub fn get_connection_pool(configuration: &DatabaseSettings) -> PgPool {
 }
 
 pub struct ApplicationBaseUrl(pub String);
+#[allow(clippy::too_many_arguments, clippy::too_many_lines)]
 async fn run(
     listener: TcpListener,
     db_pool: PgPool,
@@ -151,9 +152,11 @@ async fn run(
 
     // ── Job System ──
     let mut worker_pool: Option<crate::jobs::WorkerPool> = None;
-    let redis_url = redis_uri.expose_secret().to_string();
-    let mut redis_streams_config = crate::jobs::RedisStreamsConfig::default();
-    redis_streams_config.url = redis_url.clone();
+    let redis_connection_string = redis_uri.expose_secret().to_string();
+    let redis_streams_config = crate::jobs::RedisStreamsConfig {
+        url: redis_connection_string.clone(),
+        ..crate::jobs::RedisStreamsConfig::default()
+    };
 
     match crate::jobs::RedisStreamsQueue::with_pool(
         redis_streams_config,
@@ -173,7 +176,7 @@ async fn run(
                 match crate::jobs::DownloadJobHandler::new(
                     db_pool.get_ref().clone(),
                     Arc::new(s3.clone()),
-                    &redis_url,
+                    &redis_connection_string,
                 ) {
                     Ok(handler) => {
                         handlers.register(handler);

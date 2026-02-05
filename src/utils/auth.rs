@@ -6,6 +6,7 @@ use argon2::{
 };
 use secrecy::{ExposeSecret, SecretString};
 
+#[allow(clippy::needless_pass_by_value)]
 pub fn verify_password_hash(
     expected_password_hash: SecretString,
     password_candidate: SecretString,
@@ -22,6 +23,7 @@ pub fn verify_password_hash(
         .map_err(AuthError::InvalidCredentials)
 }
 
+#[allow(clippy::needless_pass_by_value, clippy::unwrap_used)]
 pub fn compute_password_hash(password: SecretString) -> Result<SecretString, anyhow::Error> {
     let salt = SaltString::generate(&mut OsRng);
     let password_hash = Argon2::new(

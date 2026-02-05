@@ -20,9 +20,9 @@ pub async fn create_user(
         .context("Failed to hash password.")?;
     let user_id = Uuid::new_v4();
     sqlx::query(
-        r#"
+        r"
         INSERT INTO users (id, email, password_hash) VALUES ($1, $2, $3)
-        "#,
+        ",
     )
     .bind(user_id)
     .bind(&email)
@@ -39,11 +39,11 @@ pub async fn get_stored_credentials(
     pool: &PgPool,
 ) -> Result<Option<(uuid::Uuid, SecretString)>, anyhow::Error> {
     let row = sqlx::query(
-        r#"
+        r"
         SELECT id, password_hash
         FROM users
         WHERE email = $1 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(email)
     .fetch_optional(pool)
@@ -67,11 +67,11 @@ pub async fn change_password(
         .await?
         .context("Failed to hash password.")?;
     sqlx::query(
-        r#"
+        r"
         UPDATE users
         SET password_hash = $1, updated_at = NOW()
         WHERE id = $2 AND deleted_at IS NULL
-        "#,
+        ",
     )
     .bind(password_hash.expose_secret())
     .bind(user_id)

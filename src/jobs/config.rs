@@ -4,6 +4,7 @@ use serde::Deserialize;
 
 /// Main queue configuration.
 #[derive(Debug, Clone, Deserialize)]
+#[derive(Default)]
 pub struct QueueConfig {
     /// Redis Streams configuration.
     pub redis_streams: RedisStreamsConfig,
@@ -14,15 +15,6 @@ pub struct QueueConfig {
     pub history: HistoryConfig,
 }
 
-impl Default for QueueConfig {
-    fn default() -> Self {
-        Self {
-            redis_streams: RedisStreamsConfig::default(),
-            worker_pool: WorkerPoolConfig::default(),
-            history: HistoryConfig::default(),
-        }
-    }
-}
 
 /// Redis Streams specific configuration.
 #[derive(Debug, Clone, Deserialize)]
@@ -85,7 +77,7 @@ fn default_retry_delay_ms() -> u64 {
 }
 
 fn default_pending_timeout_ms() -> u64 {
-    300000 // 5 minutes
+    300_000 // 5 minutes
 }
 
 fn default_max_stream_length() -> u64 {

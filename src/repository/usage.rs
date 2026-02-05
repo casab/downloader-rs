@@ -38,14 +38,14 @@ async fn get_or_create_usage(
     pool: &PgPool,
 ) -> Result<Usage> {
     let row = sqlx::query_as::<_, UsageRow>(
-        r#"
+        r"
         INSERT INTO usage (id, user_id, period_start, period_type)
         VALUES (gen_random_uuid(), $1, $2, $3)
         ON CONFLICT (user_id, period_start, period_type) DO UPDATE
         SET updated_at = NOW()
         RETURNING id, user_id, period_start, period_type, downloads_count,
                   bytes_downloaded, api_requests, storage_bytes_used, created_at, updated_at
-        "#,
+        ",
     )
     .bind(user_id.0)
     .bind(period_start)
@@ -70,14 +70,14 @@ pub async fn increment_download_count(
 
     // Update daily
     sqlx::query(
-        r#"
+        r"
         INSERT INTO usage (id, user_id, period_start, period_type, downloads_count, bytes_downloaded)
         VALUES (gen_random_uuid(), $1, $2, 'daily', 1, $3)
         ON CONFLICT (user_id, period_start, period_type) DO UPDATE
         SET downloads_count = usage.downloads_count + 1,
             bytes_downloaded = usage.bytes_downloaded + $3,
             updated_at = NOW()
-        "#,
+        ",
     )
     .bind(user_id.0)
     .bind(today)
@@ -88,14 +88,14 @@ pub async fn increment_download_count(
 
     // Update monthly
     sqlx::query(
-        r#"
+        r"
         INSERT INTO usage (id, user_id, period_start, period_type, downloads_count, bytes_downloaded)
         VALUES (gen_random_uuid(), $1, $2, 'monthly', 1, $3)
         ON CONFLICT (user_id, period_start, period_type) DO UPDATE
         SET downloads_count = usage.downloads_count + 1,
             bytes_downloaded = usage.bytes_downloaded + $3,
             updated_at = NOW()
-        "#,
+        ",
     )
     .bind(user_id.0)
     .bind(month_start)
@@ -116,13 +116,13 @@ pub async fn increment_api_requests(
     let today = Utc::now().date_naive();
 
     sqlx::query(
-        r#"
+        r"
         INSERT INTO usage (id, user_id, period_start, period_type, api_requests)
         VALUES (gen_random_uuid(), $1, $2, 'daily', 1)
         ON CONFLICT (user_id, period_start, period_type) DO UPDATE
         SET api_requests = usage.api_requests + 1,
             updated_at = NOW()
-        "#,
+        ",
     )
     .bind(user_id.0)
     .bind(today)
@@ -143,13 +143,13 @@ pub async fn update_storage_usage(
     let today = Utc::now().date_naive();
 
     sqlx::query(
-        r#"
+        r"
         INSERT INTO usage (id, user_id, period_start, period_type, storage_bytes_used)
         VALUES (gen_random_uuid(), $1, $2, 'daily', $3)
         ON CONFLICT (user_id, period_start, period_type) DO UPDATE
         SET storage_bytes_used = $3,
             updated_at = NOW()
-        "#,
+        ",
     )
     .bind(user_id.0)
     .bind(today)
@@ -188,6 +188,7 @@ pub async fn get_usage_summary(
     .await
     .unwrap_or(0);
 
+    #[allow(clippy::cast_precision_loss)]
     let usage_percentage = if quota_bytes > 0 {
         (storage_bytes as f64 / quota_bytes as f64) * 100.0
     } else {

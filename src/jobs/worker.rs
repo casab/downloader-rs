@@ -16,6 +16,7 @@ pub struct WorkerPool {
 
 impl WorkerPool {
     /// Start the worker pool.
+    #[allow(clippy::unused_async)]
     pub async fn start(
         config: WorkerPoolConfig,
         queue: Arc<RedisStreamsQueue>,
@@ -122,7 +123,6 @@ impl Worker {
                 }
                 Ok(None) => {
                     // No job available, XREADGROUP already blocked
-                    continue;
                 }
                 Err(e) => {
                     tracing::error!(

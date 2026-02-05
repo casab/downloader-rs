@@ -12,6 +12,7 @@ async fn main() -> Result<()> {
 
     let args = get_args();
     if args.api {
+        #[allow(clippy::expect_used)]
         let configuration = get_configuration().expect("Failed to read configuration.");
         let web_api = Application::build(configuration).await?;
         web_api.run_until_stopped().await?;

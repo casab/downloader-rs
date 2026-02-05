@@ -209,18 +209,21 @@ impl Job {
     }
 
     /// Create a new job with priority.
+    #[must_use]
     pub fn with_priority(mut self, priority: i32) -> Self {
         self.priority = priority;
         self
     }
 
     /// Set the user ID for this job.
+    #[must_use]
     pub fn with_user_id(mut self, user_id: Uuid) -> Self {
         self.user_id = Some(user_id);
         self
     }
 
     /// Set max retries for this job.
+    #[must_use]
     pub fn with_max_retries(mut self, max_retries: i32) -> Self {
         self.max_retries = max_retries;
         self

@@ -104,6 +104,7 @@ impl StorageProvider for LocalStorageProvider {
         Ok(format!("file://{}", path.display()))
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     async fn list(&self, prefix: &str) -> Result<Vec<StorageObject>> {
         let search_path = self.key_to_path(prefix)?;
         let search_dir = if search_path.is_dir() {
@@ -136,9 +137,7 @@ impl StorageProvider for LocalStorageProvider {
 
                 if key.starts_with(prefix) {
                     let last_modified = metadata
-                        .modified()
-                        .map(Self::system_time_to_datetime)
-                        .unwrap_or_else(|_| Utc::now());
+                        .modified().map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
 
                     objects.push(StorageObject {
                         key,
@@ -153,6 +152,7 @@ impl StorageProvider for LocalStorageProvider {
         Ok(objects)
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     async fn get_metadata(&self, key: &str) -> Result<StorageMetadata> {
         let path = self.key_to_path(key)?;
         let metadata = fs::metadata(&path)
@@ -160,9 +160,7 @@ impl StorageProvider for LocalStorageProvider {
             .with_context(|| format!("Failed to get metadata: {}", path.display()))?;
 
         let last_modified = metadata
-            .modified()
-            .map(Self::system_time_to_datetime)
-            .unwrap_or_else(|_| Utc::now());
+            .modified().map_or_else(|_| Utc::now(), Self::system_time_to_datetime);
 
         Ok(StorageMetadata {
             key: key.to_string(),

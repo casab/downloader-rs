@@ -58,10 +58,12 @@ pub fn create_jwt_token(
 ) -> Result<String, jsonwebtoken::errors::Error> {
     // Clamp to max 1 year to prevent timestamp overflow
     let hours = config.expiration_hours.min(8760);
-    let expiration = chrono::Utc::now()
+    #[allow(clippy::expect_used)]
+    let expiration_time = chrono::Utc::now()
         .checked_add_signed(chrono::Duration::hours(hours))
-        .expect("valid duration within 1 year")
-        .timestamp() as usize;
+        .expect("valid duration within 1 year");
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
+    let expiration = expiration_time.timestamp() as usize;
 
     let claims = Claims {
         sub: user_id,
@@ -75,6 +77,7 @@ pub fn create_jwt_token(
     )
 }
 
+#[allow(clippy::unused_async)]
 async fn validate_jwt(
     auth_header: &HeaderValue,
     config: &JwtSettings,
@@ -98,6 +101,7 @@ async fn validate_jwt(
     Err(e401("Missing or invalid Authorization header"))
 }
 
+#[allow(clippy::unused_async)]
 async fn validate_session(session: &TypedSession) -> Result<UserId, actix_web::Error> {
     match session.get_user_id().map_err(e500)? {
         Some(user_id) => Ok(UserId(user_id)),
@@ -110,6 +114,7 @@ pub async fn reject_anonymous_users(
     next: Next<impl MessageBody>,
 ) -> Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
     let auth_method = if let Some(auth_header) = req.headers().get("Authorization") {
+        #[allow(clippy::expect_used)]
         let jwt_settings = req
             .app_data::<Data<JwtSettings>>()
             .expect("JWT configuration must be set")

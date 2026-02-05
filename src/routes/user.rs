@@ -38,35 +38,30 @@ pub async fn update_profile(
     }
 
     // Validate field lengths
-    if let Some(ref name) = request.display_name {
-        if name.len() > 255 {
+    if let Some(ref name) = request.display_name
+        && name.len() > 255 {
             return Err(e400("Display name cannot exceed 255 characters"));
         }
-    }
-    if let Some(ref bio) = request.bio {
-        if bio.len() > 1000 {
+    if let Some(ref bio) = request.bio
+        && bio.len() > 1000 {
             return Err(e400("Bio cannot exceed 1000 characters"));
         }
-    }
-    if let Some(ref url) = request.avatar_url {
-        if url.len() > 2048 {
+    if let Some(ref url) = request.avatar_url
+        && url.len() > 2048 {
             return Err(e400("Avatar URL cannot exceed 2048 characters"));
         }
-    }
 
     // Validate timezone if provided
-    if let Some(ref tz) = request.timezone {
-        if !is_valid_timezone(tz) {
+    if let Some(ref tz) = request.timezone
+        && !is_valid_timezone(tz) {
             return Err(e400("Invalid timezone"));
         }
-    }
 
     // Validate avatar URL if provided
-    if let Some(ref url) = request.avatar_url {
-        if !url.is_empty() && !is_valid_url(url) {
+    if let Some(ref url) = request.avatar_url
+        && !url.is_empty() && !is_valid_url(url) {
             return Err(e400("Invalid avatar URL"));
         }
-    }
 
     let user = update_user_profile(user_id.0, &request, &pool)
         .await

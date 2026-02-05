@@ -16,15 +16,12 @@ pub async fn require_admin(
     let user_id = req
         .extensions()
         .get::<UserId>()
-        .cloned();
+        .copied();
 
-    let user_id = match user_id {
-        Some(uid) => uid,
-        None => {
-            let response = HttpResponse::Unauthorized()
-                .json(serde_json::json!({"error": "Authentication required"}));
-            return Ok(req.into_response(response).map_into_right_body());
-        }
+    let Some(user_id) = user_id else {
+        let response = HttpResponse::Unauthorized()
+            .json(serde_json::json!({"error": "Authentication required"}));
+        return Ok(req.into_response(response).map_into_right_body());
     };
 
     // Check if user is admin
@@ -32,13 +29,10 @@ pub async fn require_admin(
         .app_data::<web::Data<PgPool>>()
         .cloned();
 
-    let pool = match pool {
-        Some(p) => p,
-        None => {
-            let response = HttpResponse::InternalServerError()
-                .json(serde_json::json!({"error": "Internal server error"}));
-            return Ok(req.into_response(response).map_into_right_body());
-        }
+    let Some(pool) = pool else {
+        let response = HttpResponse::InternalServerError()
+            .json(serde_json::json!({"error": "Internal server error"}));
+        return Ok(req.into_response(response).map_into_right_body());
     };
 
     let is_admin = match sqlx::query_scalar::<_, bool>(

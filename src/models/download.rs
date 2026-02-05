@@ -86,6 +86,7 @@ pub struct Download {
 impl Download {
     /// Calculate download progress percentage.
     #[must_use]
+    #[allow(clippy::cast_precision_loss)]
     pub fn progress_percentage(&self) -> Option<f32> {
         self.total_bytes.map(|total| {
             if total > 0 {
@@ -139,22 +140,12 @@ impl DownloadStatus {
     /// Check if a state transition is valid.
     #[must_use]
     pub fn can_transition_to(&self, target: &DownloadStatus) -> bool {
-        use DownloadStatus::*;
+        use DownloadStatus::{Pending, InProgress, Cancelled, Paused, Completed, Failed};
         matches!(
             (self, target),
             // From Pending
-            (Pending, InProgress) |
-            (Pending, Cancelled) |
-            // From InProgress
-            (InProgress, Paused) |
-            (InProgress, Completed) |
-            (InProgress, Failed) |
-            (InProgress, Cancelled) |
-            // From Paused
-            (Paused, InProgress) |
-            (Paused, Cancelled) |
-            // From Failed (retry)
-            (Failed, Pending)
+            (Pending | Paused, InProgress) | (Pending | InProgress | Paused, Cancelled) |
+(InProgress, Paused | Completed | Failed) | (Failed, Pending)
         )
     }
 
@@ -204,8 +195,8 @@ impl From<String> for DownloadStatus {
             "IN_PROGRESS" => DownloadStatus::InProgress,
             "PAUSED" => DownloadStatus::Paused,
             "COMPLETED" => DownloadStatus::Completed,
-            "FAILED" => DownloadStatus::Failed,
             "CANCELLED" => DownloadStatus::Cancelled,
+            // "FAILED" and any unrecognized status default to Failed
             _ => DownloadStatus::Failed,
         }
     }
@@ -213,6 +204,7 @@ impl From<String> for DownloadStatus {
 
 /// Download progress information for API responses.
 #[derive(Debug, Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct DownloadProgress {
     pub id: Uuid,
     pub status: DownloadStatus,
@@ -315,6 +307,12 @@ impl Default for RetryPolicy {
 impl RetryPolicy {
     /// Calculate delay for a given retry attempt.
     #[must_use]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::cast_possible_wrap
+    )]
     pub fn delay_for_attempt(&self, attempt: u32) -> std::time::Duration {
         let delay = self.initial_delay_ms as f64 * self.exponential_base.powi(attempt as i32);
         std::time::Duration::from_millis(delay.min(self.max_delay_ms as f64) as u64)

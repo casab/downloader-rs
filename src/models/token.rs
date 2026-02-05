@@ -19,8 +19,7 @@ impl TokenType {
     pub fn default_expiration(&self) -> Duration {
         match self {
             Self::PasswordReset => Duration::hours(1),
-            Self::EmailVerification => Duration::hours(24),
-            Self::EmailChange => Duration::hours(24),
+            Self::EmailVerification | Self::EmailChange => Duration::hours(24),
         }
     }
 }

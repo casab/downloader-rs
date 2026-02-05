@@ -41,7 +41,9 @@ pub async fn search(
     results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
     // Apply pagination
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let offset = query.offset() as usize;
+    #[allow(clippy::cast_sign_loss, clippy::cast_possible_truncation)]
     let limit = query.limit() as usize;
     let paginated_results: Vec<SearchResult> = results
         .into_iter()
@@ -49,6 +51,7 @@ pub async fn search(
         .take(limit)
         .collect();
 
+    #[allow(clippy::cast_possible_truncation)]
     let took_ms = start.elapsed().as_millis() as i64;
 
     Ok(SearchResponse {
@@ -90,6 +93,7 @@ fn escape_ilike_search(input: &str) -> String {
 }
 
 /// Search downloads.
+#[allow(clippy::too_many_lines)]
 async fn search_downloads(
     search_term: &str,
     query: &SearchQuery,
@@ -108,7 +112,8 @@ async fn search_downloads(
         conditions.push(format!("folder_id = ${param_count}"));
     }
 
-    if query.status.is_some() && !query.status.as_ref().unwrap().is_empty() {
+    if let Some(ref statuses) = query.status
+        && !statuses.is_empty() {
         param_count += 1;
         conditions.push(format!("status = ANY(${param_count})"));
     }
@@ -150,7 +155,7 @@ async fn search_downloads(
 
     // Data query with relevance score
     let data_query = format!(
-        r#"
+        r"
         SELECT
             id, url, status, file_path, user_id, bytes_downloaded, total_bytes,
             content_type, filename, error_message, retry_count, max_retries,
@@ -160,7 +165,7 @@ async fn search_downloads(
         WHERE {where_clause}
         ORDER BY rank DESC
         LIMIT {fetch_limit}
-        "#
+        "
     );
 
     // Build count query
@@ -171,12 +176,11 @@ async fn search_downloads(
     if let Some(folder_id) = query.folder_id {
         count_builder = count_builder.bind(folder_id);
     }
-    if let Some(ref statuses) = query.status {
-        if !statuses.is_empty() {
-            let status_strs: Vec<String> = statuses.iter().map(|s| s.to_string()).collect();
+    if let Some(ref statuses) = query.status
+        && !statuses.is_empty() {
+            let status_strs: Vec<String> = statuses.iter().map(std::string::ToString::to_string).collect();
             count_builder = count_builder.bind(status_strs);
         }
-    }
     if let Some(ref content_type) = query.content_type {
         count_builder = count_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }
@@ -206,12 +210,11 @@ async fn search_downloads(
     if let Some(folder_id) = query.folder_id {
         data_builder = data_builder.bind(folder_id);
     }
-    if let Some(ref statuses) = query.status {
-        if !statuses.is_empty() {
-            let status_strs: Vec<String> = statuses.iter().map(|s| s.to_string()).collect();
+    if let Some(ref statuses) = query.status
+        && !statuses.is_empty() {
+            let status_strs: Vec<String> = statuses.iter().map(std::string::ToString::to_string).collect();
             data_builder = data_builder.bind(status_strs);
         }
-    }
     if let Some(ref content_type) = query.content_type {
         data_builder = data_builder.bind(format!("%{}%", escape_ilike_search(content_type)));
     }
@@ -283,15 +286,15 @@ async fn search_folders(
         return Ok((Vec::new(), 0));
     }
 
-    let count_query = r#"
+    let count_query = r"
         SELECT COUNT(*)
         FROM folders
         WHERE user_id = $1 AND search_vector @@ to_tsquery('english', $2)
-    "#;
+    ";
 
     let fetch_limit = query.offset() + query.limit();
     let data_query = format!(
-        r#"
+        r"
         SELECT
             id, user_id, parent_id, name, path, created_at, updated_at,
             ts_rank(search_vector, to_tsquery('english', $2)) as rank
@@ -299,7 +302,7 @@ async fn search_folders(
         WHERE user_id = $1 AND search_vector @@ to_tsquery('english', $2)
         ORDER BY rank DESC
         LIMIT {fetch_limit}
-        "#
+        "
     );
 
     let count = sqlx::query_scalar::<_, i64>(count_query)

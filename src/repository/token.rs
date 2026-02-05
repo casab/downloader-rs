@@ -17,11 +17,11 @@ pub async fn create_token(
     pool: &PgPool,
 ) -> Result<Token> {
     let token = sqlx::query_as::<_, Token>(
-        r#"
+        r"
         INSERT INTO tokens (user_id, token_hash, token_type, expires_at, metadata)
         VALUES ($1, $2, $3, $4, $5)
         RETURNING id, user_id, token_hash, token_type, expires_at, used_at, created_at, metadata
-        "#,
+        ",
     )
     .bind(user_id)
     .bind(token_hash)
@@ -43,14 +43,14 @@ pub async fn find_valid_token_by_hash(
     pool: &PgPool,
 ) -> Result<Option<Token>> {
     let token = sqlx::query_as::<_, Token>(
-        r#"
+        r"
         SELECT id, user_id, token_hash, token_type, expires_at, used_at, created_at, metadata
         FROM tokens
         WHERE token_hash = $1
           AND token_type = $2
           AND used_at IS NULL
           AND expires_at > NOW()
-        "#,
+        ",
     )
     .bind(token_hash)
     .bind(token_type)
@@ -70,7 +70,7 @@ pub async fn claim_token(
     pool: &PgPool,
 ) -> Result<Option<Token>> {
     let token = sqlx::query_as::<_, Token>(
-        r#"
+        r"
         UPDATE tokens
         SET used_at = NOW()
         WHERE id = (
@@ -83,7 +83,7 @@ pub async fn claim_token(
             LIMIT 1
         )
         RETURNING id, user_id, token_hash, token_type, expires_at, used_at, created_at, metadata
-        "#,
+        ",
     )
     .bind(token_hash)
     .bind(token_type)
@@ -98,11 +98,11 @@ pub async fn claim_token(
 #[tracing::instrument(name = "Mark token as used", skip(pool))]
 pub async fn mark_token_used(token_id: Uuid, pool: &PgPool) -> Result<()> {
     let result = sqlx::query(
-        r#"
+        r"
         UPDATE tokens
         SET used_at = NOW()
         WHERE id = $1 AND used_at IS NULL
-        "#,
+        ",
     )
     .bind(token_id)
     .execute(pool)
@@ -124,13 +124,13 @@ pub async fn invalidate_user_tokens(
     pool: &PgPool,
 ) -> Result<u64> {
     let result = sqlx::query(
-        r#"
+        r"
         UPDATE tokens
         SET used_at = NOW()
         WHERE user_id = $1
           AND token_type = $2
           AND used_at IS NULL
-        "#,
+        ",
     )
     .bind(user_id)
     .bind(token_type)
@@ -145,10 +145,10 @@ pub async fn invalidate_user_tokens(
 #[tracing::instrument(name = "Delete expired tokens", skip(pool))]
 pub async fn delete_expired_tokens(pool: &PgPool) -> Result<u64> {
     let result = sqlx::query(
-        r#"
+        r"
         DELETE FROM tokens
         WHERE expires_at < NOW() - INTERVAL '7 days'
-        "#,
+        ",
     )
     .execute(pool)
     .await

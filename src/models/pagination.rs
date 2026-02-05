@@ -83,13 +83,13 @@ impl PaginationParams {
     /// Calculate the offset for SQL queries.
     #[must_use]
     pub fn offset(&self) -> i64 {
-        ((self.page.saturating_sub(1)) * self.per_page) as i64
+        i64::from((self.page.saturating_sub(1)) * self.per_page)
     }
 
     /// Get the limit for SQL queries.
     #[must_use]
     pub fn limit(&self) -> i64 {
-        self.per_page as i64
+        i64::from(self.per_page)
     }
 }
 
@@ -126,9 +126,10 @@ pub struct PaginationMeta {
 impl PaginationMeta {
     /// Create pagination metadata from params and total count.
     #[must_use]
+    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
     pub fn new(params: &PaginationParams, total: i64) -> Self {
         let total_pages = if params.per_page > 0 {
-            ((total as f64) / (params.per_page as f64)).ceil() as u32
+            ((total as f64) / f64::from(params.per_page)).ceil() as u32
         } else {
             0
         };

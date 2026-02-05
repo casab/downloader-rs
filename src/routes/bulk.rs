@@ -29,7 +29,7 @@ pub async fn bulk_move(
         return Err(e400("No downloads specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {} items at once", MAX_BULK_IDS)));
+        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
     }
 
     let moved = move_downloads_to_folder(
@@ -48,6 +48,7 @@ pub async fn bulk_move(
         }
     })?;
 
+    #[allow(clippy::cast_possible_wrap)]
     let total = request.download_ids.len() as i64;
     let response = if moved == total {
         // All succeeded — safe to report all IDs
@@ -83,7 +84,7 @@ pub async fn bulk_tag(
         return Err(e400("No tags specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {} items at once", MAX_BULK_IDS)));
+        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
     }
 
     let added = bulk_add_tags(&request.download_ids, &request.tag_ids, &user_id, &pool)
@@ -125,7 +126,7 @@ pub async fn bulk_untag(
         return Err(e400("No tags specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {} items at once", MAX_BULK_IDS)));
+        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
     }
 
     let removed = bulk_remove_tags(&request.download_ids, &request.tag_ids, &user_id, &pool)
@@ -164,7 +165,7 @@ pub async fn bulk_delete(
         return Err(e400("No downloads specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {} items at once", MAX_BULK_IDS)));
+        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
     }
 
     let mut successful_ids = Vec::new();
@@ -184,7 +185,7 @@ pub async fn bulk_delete(
                     Ok(_) => successful_ids.push(download_id),
                     Err(e) => failed_items.push(BulkOperationFailure::new(
                         download_id,
-                        format!("Delete failed: {}", e),
+                        format!("Delete failed: {e}"),
                     )),
                 }
             }
@@ -194,12 +195,13 @@ pub async fn bulk_delete(
             Err(e) => {
                 failed_items.push(BulkOperationFailure::new(
                     download_id,
-                    format!("Error checking download: {}", e),
+                    format!("Error checking download: {e}"),
                 ));
             }
         }
     }
 
+    #[allow(clippy::cast_possible_wrap)]
     let response = BulkOperationResponse {
         success_count: successful_ids.len() as i64,
         failure_count: failed_items.len() as i64,
