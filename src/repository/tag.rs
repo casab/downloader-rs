@@ -34,9 +34,7 @@ pub async fn get_user_tag_by_id(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Option<Tag>> {
-    let query = format!(
-        "SELECT {TAG_COLUMNS} FROM tags WHERE id = $1 AND user_id = $2"
-    );
+    let query = format!("SELECT {TAG_COLUMNS} FROM tags WHERE id = $1 AND user_id = $2");
 
     let row = sqlx::query_as::<_, TagRow>(&query)
         .bind(tag_id)
@@ -50,14 +48,8 @@ pub async fn get_user_tag_by_id(
 
 /// Get a tag by name for a user.
 #[tracing::instrument(name = "Get tag by name", skip(pool))]
-pub async fn get_tag_by_name(
-    name: &str,
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<Option<Tag>> {
-    let query = format!(
-        "SELECT {TAG_COLUMNS} FROM tags WHERE name = $1 AND user_id = $2"
-    );
+pub async fn get_tag_by_name(name: &str, user_id: &UserId, pool: &PgPool) -> Result<Option<Tag>> {
+    let query = format!("SELECT {TAG_COLUMNS} FROM tags WHERE name = $1 AND user_id = $2");
 
     let row = sqlx::query_as::<_, TagRow>(&query)
         .bind(name)
@@ -129,19 +121,13 @@ pub async fn update_tag(
 
 /// Delete a tag.
 #[tracing::instrument(name = "Delete tag", skip(pool))]
-pub async fn delete_tag(
-    tag_id: Uuid,
-    user_id: &UserId,
-    pool: &PgPool,
-) -> Result<()> {
-    let result = sqlx::query(
-        "DELETE FROM tags WHERE id = $1 AND user_id = $2",
-    )
-    .bind(tag_id)
-    .bind(user_id.0)
-    .execute(pool)
-    .await
-    .context("Failed to delete tag")?;
+pub async fn delete_tag(tag_id: Uuid, user_id: &UserId, pool: &PgPool) -> Result<()> {
+    let result = sqlx::query("DELETE FROM tags WHERE id = $1 AND user_id = $2")
+        .bind(tag_id)
+        .bind(user_id.0)
+        .execute(pool)
+        .await
+        .context("Failed to delete tag")?;
 
     if result.rows_affected() == 0 {
         return Err(anyhow::anyhow!("Tag not found"));
@@ -254,14 +240,12 @@ pub async fn remove_tag_from_download(
         return Err(anyhow::anyhow!("Download not found"));
     }
 
-    let result = sqlx::query(
-        "DELETE FROM download_tags WHERE download_id = $1 AND tag_id = $2",
-    )
-    .bind(download_id)
-    .bind(tag_id)
-    .execute(pool)
-    .await
-    .context("Failed to remove tag from download")?;
+    let result = sqlx::query("DELETE FROM download_tags WHERE download_id = $1 AND tag_id = $2")
+        .bind(download_id)
+        .bind(tag_id)
+        .execute(pool)
+        .await
+        .context("Failed to remove tag from download")?;
 
     if result.rows_affected() == 0 {
         return Err(anyhow::anyhow!("Tag not found on download"));
@@ -272,10 +256,7 @@ pub async fn remove_tag_from_download(
 
 /// Get tags for a download.
 #[tracing::instrument(name = "Get download tags", skip(pool))]
-pub async fn get_download_tags(
-    download_id: Uuid,
-    pool: &PgPool,
-) -> Result<Vec<Tag>> {
+pub async fn get_download_tags(download_id: Uuid, pool: &PgPool) -> Result<Vec<Tag>> {
     let query = format!(
         r"
         SELECT {TAG_COLUMNS}

@@ -30,9 +30,7 @@ const DOWNLOAD_COLUMNS: &str = r"
 /// Get a download by ID.
 #[tracing::instrument(name = "Get download by ID", skip(pool))]
 pub async fn get_download_by_id(download_id: Uuid, pool: &PgPool) -> Result<Option<Download>> {
-    let query = format!(
-        "SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE id = $1"
-    );
+    let query = format!("SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE id = $1");
 
     let row = sqlx::query_as::<_, DownloadRow>(&query)
         .bind(download_id)
@@ -50,9 +48,7 @@ pub async fn get_user_download_by_id(
     user_id: &UserId,
     pool: &PgPool,
 ) -> Result<Option<Download>> {
-    let query = format!(
-        "SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE id = $1 AND user_id = $2"
-    );
+    let query = format!("SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE id = $1 AND user_id = $2");
 
     let row = sqlx::query_as::<_, DownloadRow>(&query)
         .bind(download_id)
@@ -160,7 +156,7 @@ pub async fn update_download_status(
                 .bind(file_path)
                 .fetch_one(pool)
                 .await
-        }
+        },
         DownloadStatus::Failed => {
             sqlx::query_as::<_, DownloadRow>(&query)
                 .bind(download_id)
@@ -168,14 +164,14 @@ pub async fn update_download_status(
                 .bind(error_message)
                 .fetch_one(pool)
                 .await
-        }
+        },
         _ => {
             sqlx::query_as::<_, DownloadRow>(&query)
                 .bind(download_id)
                 .bind(new_status)
                 .fetch_one(pool)
                 .await
-        }
+        },
     }
     .context("Failed to update download status")?;
 
@@ -264,10 +260,7 @@ pub async fn get_all_downloads(pool: &PgPool, user_id: &UserId) -> Result<Vec<Do
 }
 
 /// Get downloads with pagination, filtering, and sorting.
-#[tracing::instrument(
-    name = "Get paginated downloads",
-    skip(pool, pagination, filter, sort)
-)]
+#[tracing::instrument(name = "Get paginated downloads", skip(pool, pagination, filter, sort))]
 pub async fn get_downloads_paginated(
     pool: &PgPool,
     user_id: &UserId,
@@ -406,7 +399,9 @@ async fn execute_data_query(
         query_builder = query_builder.bind(completed_before);
     }
 
-    query_builder = query_builder.bind(pagination.limit()).bind(pagination.offset());
+    query_builder = query_builder
+        .bind(pagination.limit())
+        .bind(pagination.offset());
 
     let rows = query_builder
         .fetch_all(pool)

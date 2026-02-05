@@ -3,13 +3,13 @@ use crate::events::{DownloadCompleted, DownloadFailed, Event, EventPublisher};
 use crate::middlewares::UserId;
 use crate::models::{DownloadProgress, DownloadQueryParams, DownloadStatus};
 use crate::repository::{
-    cancel_download as repo_cancel, create_download, get_download_by_id,
-    get_downloads_paginated, get_user_download_by_id, pause_download as repo_pause,
-    resume_download as repo_resume, retry_download as repo_retry, update_download_status,
+    cancel_download as repo_cancel, create_download, get_download_by_id, get_downloads_paginated,
+    get_user_download_by_id, pause_download as repo_pause, resume_download as repo_resume,
+    retry_download as repo_retry, update_download_status,
 };
 use crate::utils::{download_file, e400, e404, e500};
-use manic::ManicError;
 use actix_web::{HttpResponse, web};
+use manic::ManicError;
 use sqlx::PgPool;
 use std::net::IpAddr;
 use std::sync::Arc;
@@ -19,7 +19,10 @@ pub struct Parameters {
     url: String,
 }
 
-#[tracing::instrument(name = "Download the given url to a file", skip(parameters, pool, event_publisher))]
+#[tracing::instrument(
+    name = "Download the given url to a file",
+    skip(parameters, pool, event_publisher)
+)]
 pub async fn download(
     parameters: web::Query<Parameters>,
     pool: web::Data<PgPool>,
@@ -51,14 +54,18 @@ pub async fn download(
 
             // Fire download completed event (best-effort)
             if let Some(ref publisher) = event_publisher {
-                let event = Event::new("download.completed", DownloadCompleted {
-                    download_id: download.id,
-                    url: file_link.clone(),
-                    user_id: uid.0,
-                    file_path,
-                    bytes: updated.bytes_downloaded,
-                    duration_ms: 0,
-                }).with_user(uid.0);
+                let event = Event::new(
+                    "download.completed",
+                    DownloadCompleted {
+                        download_id: download.id,
+                        url: file_link.clone(),
+                        user_id: uid.0,
+                        file_path,
+                        bytes: updated.bytes_downloaded,
+                        duration_ms: 0,
+                    },
+                )
+                .with_user(uid.0);
                 let _ = publisher.publish_auto(event).await;
             }
 
@@ -78,13 +85,17 @@ pub async fn download(
 
             // Fire download failed event (best-effort)
             if let Some(ref publisher) = event_publisher {
-                let event = Event::new("download.failed", DownloadFailed {
-                    download_id: download.id,
-                    url: file_link.clone(),
-                    user_id: uid.0,
-                    error: err.to_string(),
-                    attempts: 1,
-                }).with_user(uid.0);
+                let event = Event::new(
+                    "download.failed",
+                    DownloadFailed {
+                        download_id: download.id,
+                        url: file_link.clone(),
+                        user_id: uid.0,
+                        error: err.to_string(),
+                        attempts: 1,
+                    },
+                )
+                .with_user(uid.0);
                 let _ = publisher.publish_auto(event).await;
             }
 
@@ -126,15 +137,10 @@ pub async fn get_downloads(
     let filter = query_params.filter();
     let sort = query_params.sorting();
 
-    let response = get_downloads_paginated(
-        &pool,
-        &user_id.into_inner(),
-        &pagination,
-        &filter,
-        &sort,
-    )
-    .await
-    .map_err(e500)?;
+    let response =
+        get_downloads_paginated(&pool, &user_id.into_inner(), &pagination, &filter, &sort)
+            .await
+            .map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(response))
 }
@@ -273,12 +279,12 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
 
     // Only allow http and https schemes
     match parsed.scheme() {
-        "http" | "https" => {}
+        "http" | "https" => {},
         scheme => {
             return Err(format!(
                 "Unsupported URL scheme '{scheme}': only HTTP and HTTPS are allowed"
-            ))
-        }
+            ));
+        },
     }
 
     let host = parsed.host().ok_or("URL must have a host")?;
@@ -290,14 +296,14 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
                     "Access to internal/private network addresses is not allowed".to_string(),
                 );
             }
-        }
+        },
         url::Host::Ipv6(ip) => {
             if is_private_ipv6(&ip) {
                 return Err(
                     "Access to internal/private network addresses is not allowed".to_string(),
                 );
             }
-        }
+        },
         url::Host::Domain(domain) => {
             // Resolve hostname and check all returned IPs
             let port = parsed.port_or_known_default().unwrap_or(80);
@@ -313,18 +319,18 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
                 match addr.ip() {
                     IpAddr::V4(ip) if is_private_ipv4(ip) => {
                         return Err(
-                            "URL resolves to an internal/private network address".to_string(),
+                            "URL resolves to an internal/private network address".to_string()
                         );
-                    }
+                    },
                     IpAddr::V6(ip) if is_private_ipv6(&ip) => {
                         return Err(
-                            "URL resolves to an internal/private network address".to_string(),
+                            "URL resolves to an internal/private network address".to_string()
                         );
-                    }
-                    _ => {}
+                    },
+                    _ => {},
                 }
             }
-        }
+        },
     }
 
     Ok(())

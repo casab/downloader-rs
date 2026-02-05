@@ -140,12 +140,14 @@ impl DownloadStatus {
     /// Check if a state transition is valid.
     #[must_use]
     pub fn can_transition_to(&self, target: &DownloadStatus) -> bool {
-        use DownloadStatus::{Pending, InProgress, Cancelled, Paused, Completed, Failed};
+        use DownloadStatus::{Cancelled, Completed, Failed, InProgress, Paused, Pending};
         matches!(
             (self, target),
             // From Pending
-            (Pending | Paused, InProgress) | (Pending | InProgress | Paused, Cancelled) |
-(InProgress, Paused | Completed | Failed) | (Failed, Pending)
+            (Pending | Paused, InProgress)
+                | (Pending | InProgress | Paused, Cancelled)
+                | (InProgress, Paused | Completed | Failed)
+                | (Failed, Pending)
         )
     }
 
@@ -227,9 +229,9 @@ impl DownloadProgress {
     /// Create progress info from a download.
     #[must_use]
     pub fn from_download(download: &Download) -> Self {
-        let elapsed_seconds = download.started_at.map(|started| {
-            (Utc::now() - started).num_seconds()
-        });
+        let elapsed_seconds = download
+            .started_at
+            .map(|started| (Utc::now() - started).num_seconds());
 
         let speed_bytes_per_sec = elapsed_seconds.and_then(|elapsed| {
             if elapsed > 0 && download.bytes_downloaded > 0 {

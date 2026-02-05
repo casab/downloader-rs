@@ -1,11 +1,11 @@
 //! Kafka-backed event publisher (requires `kafka` feature).
 
-use super::{Event, EventsConfig};
 use super::publisher::EventPublisher;
+use super::{Event, EventsConfig};
 use anyhow::{Context, Result};
 use async_trait::async_trait;
-use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::ClientConfig;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use std::time::Duration;
 
 /// Kafka event publisher using rdkafka.
@@ -35,12 +35,9 @@ impl EventPublisher for KafkaEventPublisher {
     #[tracing::instrument(skip(self, event), fields(event_type = %event.event_type))]
     async fn publish(&self, topic: &str, event: Event) -> Result<()> {
         let key = event.id.to_string();
-        let payload = serde_json::to_string(&event)
-            .context("Failed to serialize event")?;
+        let payload = serde_json::to_string(&event).context("Failed to serialize event")?;
 
-        let record = FutureRecord::to(topic)
-            .key(&key)
-            .payload(&payload);
+        let record = FutureRecord::to(topic).key(&key).payload(&payload);
 
         self.producer
             .send(record, Duration::from_secs(5))

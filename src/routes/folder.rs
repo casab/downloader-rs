@@ -3,9 +3,9 @@
 use crate::middlewares::UserId;
 use crate::models::{CreateFolderRequest, MoveFolderRequest, UpdateFolderRequest};
 use crate::repository::{
-    create_folder as repo_create, delete_folder as repo_delete,
-    get_folder_with_contents, get_root_folders, get_subfolders, get_user_folder_by_id,
-    move_folder as repo_move, update_folder_name,
+    create_folder as repo_create, delete_folder as repo_delete, get_folder_with_contents,
+    get_root_folders, get_subfolders, get_user_folder_by_id, move_folder as repo_move,
+    update_folder_name,
 };
 use crate::utils::{e400, e404, e500};
 use actix_web::{HttpResponse, web};
@@ -159,8 +159,9 @@ pub async fn move_folder(
         .await
         .map_err(|e| {
             let msg = e.to_string();
-            if msg.contains("Cannot move folder into itself") ||
-               msg.contains("Cannot move folder into its own descendant") {
+            if msg.contains("Cannot move folder into itself")
+                || msg.contains("Cannot move folder into its own descendant")
+            {
                 e400(msg)
             } else if msg.contains("not found") {
                 e404(msg)
@@ -184,15 +185,13 @@ pub async fn delete_folder(
     let folder_id = parameters.into_inner();
     let user_id = user_id.into_inner();
 
-    repo_delete(folder_id, &user_id, &pool)
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("not found") {
-                e404("Folder not found")
-            } else {
-                e500(e)
-            }
-        })?;
+    repo_delete(folder_id, &user_id, &pool).await.map_err(|e| {
+        if e.to_string().contains("not found") {
+            e404("Folder not found")
+        } else {
+            e500(e)
+        }
+    })?;
 
     Ok(HttpResponse::NoContent().finish())
 }

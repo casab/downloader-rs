@@ -113,6 +113,7 @@ pub struct MoveFolderRequest {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
 
@@ -121,7 +122,7 @@ mod tests {
             id: Uuid::new_v4(),
             user_id: Uuid::new_v4(),
             parent_id,
-            name: path.split('/').last().unwrap_or("root").to_string(),
+            name: path.split('/').next_back().unwrap_or("root").to_string(),
             path: path.to_string(),
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -171,6 +172,9 @@ mod tests {
         assert_eq!(child.parent_path(), Some("/documents".to_string()));
 
         let grandchild = create_test_folder("/documents/work/projects", Some(Uuid::new_v4()));
-        assert_eq!(grandchild.parent_path(), Some("/documents/work".to_string()));
+        assert_eq!(
+            grandchild.parent_path(),
+            Some("/documents/work".to_string())
+        );
     }
 }

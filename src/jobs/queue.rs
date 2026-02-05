@@ -37,8 +37,7 @@ pub struct RedisStreamsQueue {
 impl RedisStreamsQueue {
     /// Create a new Redis Streams queue.
     pub fn new(config: RedisStreamsConfig) -> Result<Self> {
-        let client = Client::open(config.url.as_str())
-            .context("Failed to create Redis client")?;
+        let client = Client::open(config.url.as_str()).context("Failed to create Redis client")?;
 
         Ok(Self {
             client,
@@ -49,8 +48,7 @@ impl RedisStreamsQueue {
 
     /// Create a new Redis Streams queue with PostgreSQL for job history.
     pub fn with_pool(config: RedisStreamsConfig, pool: PgPool) -> Result<Self> {
-        let client = Client::open(config.url.as_str())
-            .context("Failed to create Redis client")?;
+        let client = Client::open(config.url.as_str()).context("Failed to create Redis client")?;
 
         Ok(Self {
             client,
@@ -81,7 +79,7 @@ impl RedisStreamsQueue {
                 Ok(()) => tracing::info!("Created consumer group for stream: {}", stream_key),
                 Err(e) if e.to_string().contains("BUSYGROUP") => {
                     tracing::debug!("Consumer group already exists for stream: {}", stream_key);
-                }
+                },
                 Err(e) => return Err(e.into()),
             }
         }
@@ -101,7 +99,7 @@ impl RedisStreamsQueue {
             Ok(()) => tracing::info!("Created dead letter stream: {}", dead_letter_key),
             Err(e) if e.to_string().contains("BUSYGROUP") => {
                 tracing::debug!("Dead letter stream already exists");
-            }
+            },
             Err(e) => return Err(e.into()),
         }
 
@@ -174,7 +172,7 @@ impl RedisStreamsQueue {
                 .bind(now)
                 .execute(pool)
                 .await?;
-            }
+            },
             JobStatus::Completed => {
                 sqlx::query(
                     r"
@@ -189,7 +187,7 @@ impl RedisStreamsQueue {
                 .bind(now)
                 .execute(pool)
                 .await?;
-            }
+            },
             JobStatus::Failed => {
                 sqlx::query(
                     r"
@@ -204,7 +202,7 @@ impl RedisStreamsQueue {
                 .bind(now)
                 .execute(pool)
                 .await?;
-            }
+            },
             _ => {
                 sqlx::query(
                     r"
@@ -217,14 +215,19 @@ impl RedisStreamsQueue {
                 .bind(status.to_string())
                 .execute(pool)
                 .await?;
-            }
+            },
         }
 
         Ok(())
     }
 
     /// Parse a job from Redis stream message fields.
-    fn parse_job(&self, stream_key: &str, message_id: &str, fields: &HashMap<String, redis::Value>) -> Result<Job> {
+    fn parse_job(
+        &self,
+        stream_key: &str,
+        message_id: &str,
+        fields: &HashMap<String, redis::Value>,
+    ) -> Result<Job> {
         let get_string = |key: &str| -> Result<String> {
             fields
                 .get(key)
@@ -240,8 +243,14 @@ impl RedisStreamsQueue {
         let job_type_str = get_string("type")?;
         let payload_str = get_string("payload")?;
         let priority: i32 = get_string("priority")?.parse().unwrap_or(0);
-        let attempts: i32 = get_string("attempts").ok().and_then(|s| s.parse().ok()).unwrap_or(0);
-        let max_retries: i32 = get_string("max_retries").ok().and_then(|s| s.parse().ok()).unwrap_or(self.config.max_retries);
+        let attempts: i32 = get_string("attempts")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(0);
+        let max_retries: i32 = get_string("max_retries")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(self.config.max_retries);
         let created_at_ms: i64 = get_string("created_at")?.parse()?;
 
         let job_type = match job_type_str.as_str() {
@@ -254,12 +263,10 @@ impl RedisStreamsQueue {
         };
 
         let payload: serde_json::Value = serde_json::from_str(&payload_str)?;
-        let created_at = chrono::DateTime::from_timestamp_millis(created_at_ms)
-            .unwrap_or_else(Utc::now);
+        let created_at =
+            chrono::DateTime::from_timestamp_millis(created_at_ms).unwrap_or_else(Utc::now);
 
-        let user_id = get_string("user_id")
-            .ok()
-            .and_then(|s| s.parse().ok());
+        let user_id = get_string("user_id").ok().and_then(|s| s.parse().ok());
 
         Ok(Job {
             id,
@@ -297,56 +304,58 @@ impl RedisStreamsQueue {
             // Parse pending response
             if let redis::Value::Array(entries) = pending
                 && let Some(redis::Value::Array(entry)) = entries.first()
-                    && entry.len() >= 3 {
-                        let message_id = match &entry[0] {
-                            redis::Value::BulkString(bytes) => String::from_utf8_lossy(bytes).to_string(),
-                            _ => continue,
-                        };
+                && entry.len() >= 3
+            {
+                let message_id = match &entry[0] {
+                    redis::Value::BulkString(bytes) => String::from_utf8_lossy(bytes).to_string(),
+                    _ => continue,
+                };
 
-                        #[allow(clippy::cast_sign_loss)]
-                        let idle_time = match &entry[2] {
-                            redis::Value::Int(ms) => *ms as u64,
-                            _ => continue,
-                        };
+                #[allow(clippy::cast_sign_loss)]
+                let idle_time = match &entry[2] {
+                    redis::Value::Int(ms) => *ms as u64,
+                    _ => continue,
+                };
 
-                        // Get delivery count (entry[3]) to track actual retry attempts
-                        #[allow(clippy::cast_possible_truncation)]
-                        let delivery_count = if entry.len() >= 4 {
-                            match &entry[3] {
-                                redis::Value::Int(n) => *n as i32,
-                                _ => 0,
-                            }
-                        } else {
-                            0
-                        };
-
-                        if idle_time > self.config.pending_timeout_ms {
-                            // XCLAIM to take ownership
-                            let claimed: redis::Value = redis::cmd("XCLAIM")
-                                .arg(&stream_key)
-                                .arg(&self.config.consumer_group)
-                                .arg(worker_id)
-                                .arg(self.config.pending_timeout_ms)
-                                .arg(&message_id)
-                                .query_async(conn)
-                                .await?;
-
-                            if let redis::Value::Array(messages) = claimed
-                                && let Some(redis::Value::Array(msg)) = messages.first()
-                                    && msg.len() >= 2 {
-                                        let fields = self.parse_stream_fields(&msg[1])?;
-                                        tracing::warn!(
-                                            delivery_count = delivery_count,
-                                            "Claimed pending message {} from dead consumer",
-                                            message_id
-                                        );
-                                        let mut job = self.parse_job(&stream_key, &message_id, &fields)?;
-                                        // Use delivery count as actual attempts (Redis tracks this natively)
-                                        job.attempts = delivery_count;
-                                        return Ok(Some(job));
-                                    }
-                        }
+                // Get delivery count (entry[3]) to track actual retry attempts
+                #[allow(clippy::cast_possible_truncation)]
+                let delivery_count = if entry.len() >= 4 {
+                    match &entry[3] {
+                        redis::Value::Int(n) => *n as i32,
+                        _ => 0,
                     }
+                } else {
+                    0
+                };
+
+                if idle_time > self.config.pending_timeout_ms {
+                    // XCLAIM to take ownership
+                    let claimed: redis::Value = redis::cmd("XCLAIM")
+                        .arg(&stream_key)
+                        .arg(&self.config.consumer_group)
+                        .arg(worker_id)
+                        .arg(self.config.pending_timeout_ms)
+                        .arg(&message_id)
+                        .query_async(conn)
+                        .await?;
+
+                    if let redis::Value::Array(messages) = claimed
+                        && let Some(redis::Value::Array(msg)) = messages.first()
+                        && msg.len() >= 2
+                    {
+                        let fields = self.parse_stream_fields(&msg[1])?;
+                        tracing::warn!(
+                            delivery_count = delivery_count,
+                            "Claimed pending message {} from dead consumer",
+                            message_id
+                        );
+                        let mut job = self.parse_job(&stream_key, &message_id, &fields)?;
+                        // Use delivery count as actual attempts (Redis tracks this natively)
+                        job.attempts = delivery_count;
+                        return Ok(Some(job));
+                    }
+                }
+            }
         }
 
         Ok(None)
@@ -463,9 +472,7 @@ impl JobQueue for RedisStreamsQueue {
             .block(self.config.block_ms as usize)
             .count(1);
 
-        let result: StreamReadReply = conn
-            .xread_options(&stream_refs, &ids, &opts)
-            .await?;
+        let result: StreamReadReply = conn.xread_options(&stream_refs, &ids, &opts).await?;
 
         // Parse first message if any
         for stream_key in &result.keys {

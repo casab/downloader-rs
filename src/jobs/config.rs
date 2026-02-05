@@ -3,8 +3,7 @@
 use serde::Deserialize;
 
 /// Main queue configuration.
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct QueueConfig {
     /// Redis Streams configuration.
     pub redis_streams: RedisStreamsConfig,
@@ -14,7 +13,6 @@ pub struct QueueConfig {
     #[serde(default)]
     pub history: HistoryConfig,
 }
-
 
 /// Redis Streams specific configuration.
 #[derive(Debug, Clone, Deserialize)]

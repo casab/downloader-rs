@@ -126,7 +126,11 @@ pub struct PaginationMeta {
 impl PaginationMeta {
     /// Create pagination metadata from params and total count.
     #[must_use]
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub fn new(params: &PaginationParams, total: i64) -> Self {
         let total_pages = if params.per_page > 0 {
             ((total as f64) / f64::from(params.per_page)).ceil() as u32

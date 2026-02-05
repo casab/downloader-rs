@@ -6,8 +6,7 @@ use std::time::{Duration, Instant};
 use tokio::sync::Mutex;
 
 /// Configuration for bandwidth throttling.
-#[derive(Debug, Clone, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct ThrottleConfig {
     /// Per-download speed limit in bytes per second (0 = unlimited).
     #[serde(default)]
@@ -19,7 +18,6 @@ pub struct ThrottleConfig {
     #[serde(default)]
     pub global_bytes_per_sec: u64,
 }
-
 
 /// Token bucket rate limiter for bandwidth throttling.
 #[derive(Debug)]
@@ -60,7 +58,11 @@ impl TokenBucket {
     }
 
     /// Try to consume tokens. Returns how many tokens were consumed.
-    #[allow(clippy::cast_precision_loss, clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    #[allow(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss
+    )]
     pub fn try_consume(&mut self, requested: u64) -> u64 {
         self.refill();
 

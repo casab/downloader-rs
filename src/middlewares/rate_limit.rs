@@ -1,10 +1,10 @@
 //! Rate limiting middleware using Redis-backed token bucket algorithm.
 
+use actix_web::HttpMessage;
+use actix_web::HttpResponse;
 use actix_web::body::MessageBody;
 use actix_web::dev::{ServiceRequest, ServiceResponse};
 use actix_web::middleware::Next;
-use actix_web::HttpMessage;
-use actix_web::HttpResponse;
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use redis::AsyncCommands;
@@ -35,10 +35,18 @@ pub struct RateLimitConfig {
     pub enabled: bool,
 }
 
-fn default_rpm() -> u32 { 60 }
-fn default_rph() -> u32 { 1000 }
-fn default_burst() -> u32 { 10 }
-fn default_enabled() -> bool { true }
+fn default_rpm() -> u32 {
+    60
+}
+fn default_rph() -> u32 {
+    1000
+}
+fn default_burst() -> u32 {
+    10
+}
+fn default_enabled() -> bool {
+    true
+}
 
 impl Default for RateLimitConfig {
     fn default() -> Self {
@@ -74,7 +82,11 @@ pub struct RateLimitError {
 
 impl std::fmt::Display for RateLimitError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Rate limit exceeded. Retry after {:?}", self.result.retry_after)
+        write!(
+            f,
+            "Rate limit exceeded. Retry after {:?}",
+            self.result.retry_after
+        )
     }
 }
 
@@ -98,15 +110,12 @@ impl RateLimiter {
             });
         }
 
-        let mut conn = self.client
-            .get_multiplexed_async_connection()
-            .await?;
+        let mut conn = self.client.get_multiplexed_async_connection().await?;
 
         let now = Utc::now();
         let window_key = format!("rate_limit:{}:{}", key, now.timestamp() / 60);
         let window_start = (now.timestamp() / 60) * 60;
-        let reset_at = DateTime::from_timestamp(window_start + 60, 0)
-            .unwrap_or(now);
+        let reset_at = DateTime::from_timestamp(window_start + 60, 0).unwrap_or(now);
 
         // Increment counter with TTL
         let count: u32 = redis::cmd("INCR")
@@ -184,42 +193,46 @@ pub async fn rate_limit_middleware(
 ) -> std::result::Result<ServiceResponse<impl MessageBody>, actix_web::Error> {
     // Get rate limiter from app data
     let Some(limiter) = req.app_data::<actix_web::web::Data<RateLimiter>>() else {
-        return next.call(req).await.map(ServiceResponse::map_into_left_body);
+        return next
+            .call(req)
+            .await
+            .map(ServiceResponse::map_into_left_body);
     };
     let limiter = limiter.clone();
 
     // Build rate limit key: prefer user ID (set by auth middleware), fall back to IP
-    let key = req
-        .extensions()
-        .get::<super::UserId>()
-        .map_or_else(
-            || {
-                req.peer_addr().map_or_else(|| "ip:unknown".to_string(), |addr| format!("ip:{}", addr.ip()))
-            },
-            |uid| format!("user:{}", uid.0),
-        );
+    let key = req.extensions().get::<super::UserId>().map_or_else(
+        || {
+            req.peer_addr().map_or_else(
+                || "ip:unknown".to_string(),
+                |addr| format!("ip:{}", addr.ip()),
+            )
+        },
+        |uid| format!("user:{}", uid.0),
+    );
 
     match limiter.check(&key).await {
-        Ok(result) if !result.allowed => {
-            Ok(req.into_response(RateLimiter::too_many_requests(&result)).map_into_right_body())
-        }
+        Ok(result) if !result.allowed => Ok(req
+            .into_response(RateLimiter::too_many_requests(&result))
+            .map_into_right_body()),
         Ok(result) => {
             let mut response = next.call(req).await?;
             for (name, value) in RateLimiter::build_headers(&result) {
                 if let Ok(hv) = actix_web::http::header::HeaderValue::from_str(&value) {
-                    response.headers_mut().insert(
-                        actix_web::http::header::HeaderName::from_static(name),
-                        hv,
-                    );
+                    response
+                        .headers_mut()
+                        .insert(actix_web::http::header::HeaderName::from_static(name), hv);
                 }
             }
             Ok(response.map_into_left_body())
-        }
+        },
         Err(e) => {
             // If rate limiter fails (e.g. Redis down), allow the request through (fail-open)
             tracing::error!("Rate limiter error (failing open): {}", e);
-            next.call(req).await.map(ServiceResponse::map_into_left_body)
-        }
+            next.call(req)
+                .await
+                .map(ServiceResponse::map_into_left_body)
+        },
     }
 }
 

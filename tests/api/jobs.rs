@@ -1,20 +1,27 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
 //! Integration tests for the jobs module.
 
 use downloader::jobs::{
-    Job, JobQueue, JobType, RedisStreamsConfig, RedisStreamsQueue,
-    CleanupPayload, DownloadPayload,
+    CleanupPayload, DownloadPayload, Job, JobQueue, JobType, RedisStreamsConfig, RedisStreamsQueue,
 };
 use uuid::Uuid;
 
 /// Create a test Redis Streams queue.
 async fn create_test_queue() -> RedisStreamsQueue {
-    let mut config = RedisStreamsConfig::default();
-    // Use a unique prefix for each test run to avoid conflicts
-    config.stream_prefix = format!("test_jobs_{}", Uuid::new_v4().to_string().split('-').next().unwrap());
-    config.block_ms = 100; // Short block time for tests
+    let config = RedisStreamsConfig {
+        stream_prefix: format!(
+            "test_jobs_{}",
+            Uuid::new_v4().to_string().split('-').next().unwrap()
+        ),
+        block_ms: 100, // Short block time for tests
+        ..Default::default()
+    };
 
     let queue = RedisStreamsQueue::new(config).expect("Failed to create queue");
-    queue.initialize().await.expect("Failed to initialize queue");
+    queue
+        .initialize()
+        .await
+        .expect("Failed to initialize queue");
     queue
 }
 
@@ -84,7 +91,10 @@ async fn test_download_job_enqueue() {
     assert!(!message_id.is_empty());
 
     // Dequeue and verify
-    let dequeued = queue.dequeue("test-worker-2").await.expect("Failed to dequeue");
+    let dequeued = queue
+        .dequeue("test-worker-2")
+        .await
+        .expect("Failed to dequeue");
     assert!(dequeued.is_some());
 
     let job = dequeued.unwrap();
@@ -98,7 +108,10 @@ async fn test_download_job_enqueue() {
 
     // Cleanup
     queue
-        .acknowledge(job.stream_key.as_ref().unwrap(), job.message_id.as_ref().unwrap())
+        .acknowledge(
+            job.stream_key.as_ref().unwrap(),
+            job.message_id.as_ref().unwrap(),
+        )
         .await
         .ok();
 }
@@ -118,7 +131,10 @@ async fn test_job_fail_to_dead_letter() {
     queue.enqueue(job).await.expect("Failed to enqueue");
 
     // Dequeue
-    let dequeued = queue.dequeue("test-worker-3").await.expect("Failed to dequeue");
+    let dequeued = queue
+        .dequeue("test-worker-3")
+        .await
+        .expect("Failed to dequeue");
     let job = dequeued.unwrap();
 
     // Fail the job
@@ -135,12 +151,20 @@ async fn test_job_fail_to_dead_letter() {
 #[tokio::test]
 async fn test_multiple_job_types() {
     // Use longer block time for this test to ensure we can dequeue both jobs
-    let mut config = RedisStreamsConfig::default();
-    config.stream_prefix = format!("test_jobs_multi_{}", Uuid::new_v4().to_string().split('-').next().unwrap());
-    config.block_ms = 500; // Longer block time for multi-job test
+    let config = RedisStreamsConfig {
+        stream_prefix: format!(
+            "test_jobs_multi_{}",
+            Uuid::new_v4().to_string().split('-').next().unwrap()
+        ),
+        block_ms: 500, // Longer block time for multi-job test
+        ..Default::default()
+    };
 
     let queue = RedisStreamsQueue::new(config).expect("Failed to create queue");
-    queue.initialize().await.expect("Failed to initialize queue");
+    queue
+        .initialize()
+        .await
+        .expect("Failed to initialize queue");
 
     // Enqueue two jobs of the SAME type to a single stream (simpler test)
     let cleanup_job1 = Job::new(
@@ -164,15 +188,27 @@ async fn test_multiple_job_types() {
     let id1 = cleanup_job1.id;
     let id2 = cleanup_job2.id;
 
-    queue.enqueue(cleanup_job1).await.expect("Failed to enqueue cleanup 1");
-    queue.enqueue(cleanup_job2).await.expect("Failed to enqueue cleanup 2");
+    queue
+        .enqueue(cleanup_job1)
+        .await
+        .expect("Failed to enqueue cleanup 1");
+    queue
+        .enqueue(cleanup_job2)
+        .await
+        .expect("Failed to enqueue cleanup 2");
 
     // Dequeue both from the same stream
-    let job1 = queue.dequeue("test-worker-4").await.expect("Failed to dequeue first");
+    let job1 = queue
+        .dequeue("test-worker-4")
+        .await
+        .expect("Failed to dequeue first");
     assert!(job1.is_some(), "First dequeue should return a job");
     let job1 = job1.unwrap();
 
-    let job2 = queue.dequeue("test-worker-4").await.expect("Failed to dequeue second");
+    let job2 = queue
+        .dequeue("test-worker-4")
+        .await
+        .expect("Failed to dequeue second");
     assert!(job2.is_some(), "Second dequeue should return a job");
     let job2 = job2.unwrap();
 
@@ -182,8 +218,20 @@ async fn test_multiple_job_types() {
     assert!(ids.contains(&id2), "Should have second job");
 
     // Cleanup
-    queue.acknowledge(job1.stream_key.as_ref().unwrap(), job1.message_id.as_ref().unwrap()).await.ok();
-    queue.acknowledge(job2.stream_key.as_ref().unwrap(), job2.message_id.as_ref().unwrap()).await.ok();
+    queue
+        .acknowledge(
+            job1.stream_key.as_ref().unwrap(),
+            job1.message_id.as_ref().unwrap(),
+        )
+        .await
+        .ok();
+    queue
+        .acknowledge(
+            job2.stream_key.as_ref().unwrap(),
+            job2.message_id.as_ref().unwrap(),
+        )
+        .await
+        .ok();
 }
 
 #[tokio::test]
@@ -191,6 +239,9 @@ async fn test_dequeue_empty_queue_returns_none() {
     let queue = create_test_queue().await;
 
     // Try to dequeue from empty queue (should timeout quickly due to short block_ms)
-    let result = queue.dequeue("test-worker-5").await.expect("Dequeue failed");
+    let result = queue
+        .dequeue("test-worker-5")
+        .await
+        .expect("Dequeue failed");
     assert!(result.is_none());
 }

@@ -29,24 +29,21 @@ pub async fn bulk_move(
         return Err(e400("No downloads specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
+        return Err(e400(format!(
+            "Cannot process more than {MAX_BULK_IDS} items at once"
+        )));
     }
 
-    let moved = move_downloads_to_folder(
-        &request.download_ids,
-        request.folder_id,
-        &user_id,
-        &pool,
-    )
-    .await
-    .map_err(|e| {
-        let msg = e.to_string();
-        if msg.contains("not found") {
-            e400(msg)
-        } else {
-            e500(e)
-        }
-    })?;
+    let moved = move_downloads_to_folder(&request.download_ids, request.folder_id, &user_id, &pool)
+        .await
+        .map_err(|e| {
+            let msg = e.to_string();
+            if msg.contains("not found") {
+                e400(msg)
+            } else {
+                e500(e)
+            }
+        })?;
 
     #[allow(clippy::cast_possible_wrap)]
     let total = request.download_ids.len() as i64;
@@ -84,7 +81,9 @@ pub async fn bulk_tag(
         return Err(e400("No tags specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
+        return Err(e400(format!(
+            "Cannot process more than {MAX_BULK_IDS} items at once"
+        )));
     }
 
     let added = bulk_add_tags(&request.download_ids, &request.tag_ids, &user_id, &pool)
@@ -126,7 +125,9 @@ pub async fn bulk_untag(
         return Err(e400("No tags specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
+        return Err(e400(format!(
+            "Cannot process more than {MAX_BULK_IDS} items at once"
+        )));
     }
 
     let removed = bulk_remove_tags(&request.download_ids, &request.tag_ids, &user_id, &pool)
@@ -165,7 +166,9 @@ pub async fn bulk_delete(
         return Err(e400("No downloads specified"));
     }
     if request.download_ids.len() > MAX_BULK_IDS {
-        return Err(e400(format!("Cannot process more than {MAX_BULK_IDS} items at once")));
+        return Err(e400(format!(
+            "Cannot process more than {MAX_BULK_IDS} items at once"
+        )));
     }
 
     let mut successful_ids = Vec::new();
@@ -188,16 +191,16 @@ pub async fn bulk_delete(
                         format!("Delete failed: {e}"),
                     )),
                 }
-            }
+            },
             Ok(None) => {
                 failed_items.push(BulkOperationFailure::new(download_id, "Download not found"));
-            }
+            },
             Err(e) => {
                 failed_items.push(BulkOperationFailure::new(
                     download_id,
                     format!("Error checking download: {e}"),
                 ));
-            }
+            },
         }
     }
 

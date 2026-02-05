@@ -1,8 +1,8 @@
 //! Worker pool for processing jobs.
 
 use crate::jobs::{Job, JobHandlers, JobQueue, JobStatus, RedisStreamsQueue, WorkerPoolConfig};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
@@ -39,10 +39,7 @@ impl WorkerPool {
             workers.push(handle);
         }
 
-        tracing::info!(
-            num_workers = config.num_workers,
-            "Worker pool started"
-        );
+        tracing::info!(num_workers = config.num_workers, "Worker pool started");
 
         Self {
             workers,
@@ -120,10 +117,10 @@ impl Worker {
                     );
 
                     self.process_job(job).instrument(span).await;
-                }
+                },
                 Ok(None) => {
                     // No job available, XREADGROUP already blocked
-                }
+                },
                 Err(e) => {
                     tracing::error!(
                         worker_id = %self.id,
@@ -132,7 +129,7 @@ impl Worker {
                     );
                     // Back off on error
                     tokio::time::sleep(Duration::from_secs(5)).await;
-                }
+                },
             }
         }
 
@@ -151,11 +148,7 @@ impl Worker {
                 job_type = %job.job_type,
                 "No handler registered for job type"
             );
-            if let Err(e) = self
-                .queue
-                .fail(&job, "No handler registered")
-                .await
-            {
+            if let Err(e) = self.queue.fail(&job, "No handler registered").await {
                 tracing::error!(error = %e, "Failed to mark job as failed");
             }
             return;
@@ -193,7 +186,7 @@ impl Worker {
                     job_type = %job.job_type,
                     "Job completed successfully"
                 );
-            }
+            },
             Err(e) if job.can_retry() => {
                 // Will be retried via pending message mechanism
                 tracing::warn!(
@@ -205,21 +198,23 @@ impl Worker {
                     "Job failed, will retry"
                 );
                 // Don't acknowledge - let it be reclaimed after pending timeout
-            }
+            },
             Err(e) => {
                 // Max retries exceeded, move to dead letter queue
-                if let Err(fail_err) = self
-                    .queue
-                    .fail(&job, &e.to_string())
-                    .await
-                {
+                if let Err(fail_err) = self.queue.fail(&job, &e.to_string()).await {
                     tracing::error!(error = %fail_err, "Failed to move job to dead letter queue");
                 }
 
                 // Update job history
                 if let Err(history_err) = self
                     .queue
-                    .update_job_status(job.id, JobStatus::Failed, Some(&self.id), None, Some(&e.to_string()))
+                    .update_job_status(
+                        job.id,
+                        JobStatus::Failed,
+                        Some(&self.id),
+                        None,
+                        Some(&e.to_string()),
+                    )
                     .await
                 {
                     tracing::warn!(error = %history_err, "Failed to update job history");
@@ -232,7 +227,7 @@ impl Worker {
                     error = %e,
                     "Job permanently failed"
                 );
-            }
+            },
         }
     }
 }

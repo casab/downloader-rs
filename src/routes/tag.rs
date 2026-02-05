@@ -3,9 +3,9 @@
 use crate::middlewares::UserId;
 use crate::models::{AddTagsRequest, CreateTagRequest, Tag, UpdateTagRequest};
 use crate::repository::{
-    add_tags_to_download, create_tag as repo_create, delete_tag as repo_delete,
-    get_download_tags, get_user_download_by_id, get_user_tag_by_id, get_user_tags,
-    remove_tag_from_download, update_tag as repo_update,
+    add_tags_to_download, create_tag as repo_create, delete_tag as repo_delete, get_download_tags,
+    get_user_download_by_id, get_user_tag_by_id, get_user_tags, remove_tag_from_download,
+    update_tag as repo_update,
 };
 use crate::utils::{e400, e404, e500};
 use actix_web::{HttpResponse, web};
@@ -128,15 +128,13 @@ pub async fn delete_tag(
     let tag_id = parameters.into_inner();
     let user_id = user_id.into_inner();
 
-    repo_delete(tag_id, &user_id, &pool)
-        .await
-        .map_err(|e| {
-            if e.to_string().contains("not found") {
-                e404("Tag not found")
-            } else {
-                e500(e)
-            }
-        })?;
+    repo_delete(tag_id, &user_id, &pool).await.map_err(|e| {
+        if e.to_string().contains("not found") {
+            e404("Tag not found")
+        } else {
+            e500(e)
+        }
+    })?;
 
     Ok(HttpResponse::NoContent().finish())
 }
@@ -211,9 +209,7 @@ pub async fn get_tags_for_download(
         .map_err(e500)?
         .ok_or_else(|| e404("Download not found"))?;
 
-    let tags = get_download_tags(download_id, &pool)
-        .await
-        .map_err(e500)?;
+    let tags = get_download_tags(download_id, &pool).await.map_err(e500)?;
 
     Ok(HttpResponse::Ok().json(tags))
 }

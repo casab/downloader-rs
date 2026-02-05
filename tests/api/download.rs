@@ -1,3 +1,5 @@
+#![allow(clippy::expect_used, clippy::unwrap_used)]
+
 use crate::helpers::{TestUser, spawn_app};
 use downloader::models::{Download, DownloadRow, DownloadStatus, PaginatedResponse};
 use sqlx::PgPool;
@@ -6,13 +8,13 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn create_test_download(pool: &PgPool, test_user: &TestUser) -> Download {
     let row = sqlx::query_as::<_, DownloadRow>(
-        r#"
+        r"
         INSERT INTO downloads (id, url, status, user_id, created_at, updated_at)
         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         RETURNING id, url, status, file_path, user_id, bytes_downloaded, total_bytes,
                   content_type, filename, error_message, retry_count, max_retries,
                   priority, started_at, metadata, created_at, updated_at, completed_at
-        "#,
+        ",
     )
     .bind(uuid::Uuid::new_v4())
     .bind("https://example.com/test.zip")
@@ -36,10 +38,7 @@ async fn get_download_returns_200_for_existing_download() {
 
     let response = app
         .api_client
-        .get(&format!(
-            "{}/api/v1/downloads/{}",
-            &app.address, download.id
-        ))
+        .get(format!("{}/api/v1/downloads/{}", &app.address, download.id))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -64,7 +63,7 @@ async fn get_download_returns_404_for_non_existent_download() {
 
     let response = app
         .api_client
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/downloads/{}",
             &app.address, non_existent_id
         ))
@@ -88,7 +87,7 @@ async fn get_downloads_returns_200_and_list() {
 
     let response = app
         .api_client
-        .get(&format!("{}/api/v1/downloads", &app.address))
+        .get(format!("{}/api/v1/downloads", &app.address))
         .send()
         .await
         .expect("Failed to execute request.");
@@ -123,7 +122,7 @@ async fn download_file_returns_200_for_valid_url() {
 
     let response = app
         .api_client
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/download_file?url={}",
             &app.address, test_url
         ))
@@ -154,7 +153,7 @@ async fn download_file_returns_500_for_server_error() {
 
     let response = app
         .api_client
-        .get(&format!(
+        .get(format!(
             "{}/api/v1/download_file?url={}",
             &app.address, test_url
         ))

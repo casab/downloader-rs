@@ -99,13 +99,8 @@ impl SortParams {
 }
 
 /// Allowed sort fields for downloads.
-pub const DOWNLOAD_SORT_FIELDS: &[&str] = &[
-    "created_at",
-    "updated_at",
-    "completed_at",
-    "status",
-    "url",
-];
+pub const DOWNLOAD_SORT_FIELDS: &[&str] =
+    &["created_at", "updated_at", "completed_at", "status", "url"];
 
 /// Default sort field for downloads.
 pub const DOWNLOAD_DEFAULT_SORT: &str = "created_at";
