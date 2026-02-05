@@ -301,9 +301,13 @@ async fn validate_download_url(raw_url: &str) -> Result<(), String> {
         url::Host::Domain(domain) => {
             // Resolve hostname and check all returned IPs
             let port = parsed.port_or_known_default().unwrap_or(80);
-            let addrs = tokio::net::lookup_host(format!("{domain}:{port}"))
-                .await
-                .map_err(|e| format!("Failed to resolve hostname: {e}"))?;
+            let addrs = tokio::time::timeout(
+                std::time::Duration::from_secs(5),
+                tokio::net::lookup_host(format!("{domain}:{port}")),
+            )
+            .await
+            .map_err(|_| "DNS resolution timed out".to_string())?
+            .map_err(|e| format!("Failed to resolve hostname: {e}"))?;
 
             for addr in addrs {
                 match addr.ip() {

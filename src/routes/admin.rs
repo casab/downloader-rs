@@ -102,7 +102,9 @@ pub async fn admin_update_user(
     };
 
     // Best-effort audit logging
-    let _ = repository::create_audit_log(&audit, &pool).await;
+    if let Err(e) = repository::create_audit_log(&audit, &pool).await {
+        tracing::error!("Failed to create audit log for user update: {}", e);
+    }
 
     let updated = repository::get_user_by_id_admin(target_user_id, &pool)
         .await
@@ -150,7 +152,9 @@ pub async fn admin_delete_user(
             .and_then(|v| v.to_str().ok())
             .map(String::from),
     };
-    let _ = repository::create_audit_log(&audit, &pool).await;
+    if let Err(e) = repository::create_audit_log(&audit, &pool).await {
+        tracing::error!("Failed to create audit log for user deletion: {}", e);
+    }
 
     Ok(HttpResponse::NoContent().finish())
 }

@@ -56,9 +56,11 @@ pub fn create_jwt_token(
     user_id: Uuid,
     config: &JwtSettings,
 ) -> Result<String, jsonwebtoken::errors::Error> {
+    // Clamp to max 1 year to prevent timestamp overflow
+    let hours = config.expiration_hours.min(8760);
     let expiration = chrono::Utc::now()
-        .checked_add_signed(chrono::Duration::hours(config.expiration_hours))
-        .expect("Failed to calculate expiration date")
+        .checked_add_signed(chrono::Duration::hours(hours))
+        .expect("valid duration within 1 year")
         .timestamp() as usize;
 
     let claims = Claims {

@@ -37,6 +37,23 @@ pub async fn update_profile(
         return Err(e400("No fields provided for update"));
     }
 
+    // Validate field lengths
+    if let Some(ref name) = request.display_name {
+        if name.len() > 255 {
+            return Err(e400("Display name cannot exceed 255 characters"));
+        }
+    }
+    if let Some(ref bio) = request.bio {
+        if bio.len() > 1000 {
+            return Err(e400("Bio cannot exceed 1000 characters"));
+        }
+    }
+    if let Some(ref url) = request.avatar_url {
+        if url.len() > 2048 {
+            return Err(e400("Avatar URL cannot exceed 2048 characters"));
+        }
+    }
+
     // Validate timezone if provided
     if let Some(ref tz) = request.timezone {
         if !is_valid_timezone(tz) {

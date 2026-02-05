@@ -215,8 +215,8 @@ pub async fn rate_limit_middleware(
             Ok(response.map_into_left_body())
         }
         Err(e) => {
-            // If rate limiter fails (e.g. Redis down), allow the request through
-            tracing::warn!("Rate limiter error: {}, allowing request", e);
+            // If rate limiter fails (e.g. Redis down), allow the request through (fail-open)
+            tracing::error!("Rate limiter error (failing open): {}", e);
             next.call(req).await.map(ServiceResponse::map_into_left_body)
         }
     }
