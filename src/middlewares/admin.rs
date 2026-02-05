@@ -41,14 +41,22 @@ pub async fn require_admin(
         }
     };
 
-    let is_admin = sqlx::query_scalar::<_, bool>(
+    let is_admin = match sqlx::query_scalar::<_, bool>(
         "SELECT is_admin FROM users WHERE id = $1",
     )
     .bind(user_id.0)
     .fetch_optional(pool.as_ref())
     .await
-    .unwrap_or(None)
-    .unwrap_or(false);
+    {
+        Ok(Some(val)) => val,
+        Ok(None) => false, // User not found
+        Err(e) => {
+            tracing::error!("Database error checking admin status: {}", e);
+            let response = HttpResponse::InternalServerError()
+                .json(serde_json::json!({"error": "Internal server error"}));
+            return Ok(req.into_response(response).map_into_right_body());
+        }
+    };
 
     if !is_admin {
         let response = HttpResponse::Forbidden()

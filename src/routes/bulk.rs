@@ -48,11 +48,18 @@ pub async fn bulk_move(
         }
     })?;
 
-    let response = BulkOperationResponse {
-        success_count: moved,
-        failure_count: request.download_ids.len() as i64 - moved,
-        successful_ids: request.download_ids[..moved as usize].to_vec(),
-        failed_items: Vec::new(),
+    let total = request.download_ids.len() as i64;
+    let response = if moved == total {
+        // All succeeded — safe to report all IDs
+        BulkOperationResponse::all_success(request.download_ids)
+    } else {
+        // Partial success — we don't know which specific IDs failed
+        BulkOperationResponse {
+            success_count: moved,
+            failure_count: total - moved,
+            successful_ids: Vec::new(),
+            failed_items: Vec::new(),
+        }
     };
 
     Ok(HttpResponse::Ok().json(response))

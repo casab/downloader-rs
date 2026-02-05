@@ -4,8 +4,8 @@ use crate::middlewares::UserId;
 use crate::models::{AddTagsRequest, CreateTagRequest, Tag, UpdateTagRequest};
 use crate::repository::{
     add_tags_to_download, create_tag as repo_create, delete_tag as repo_delete,
-    get_download_tags, get_user_tag_by_id, get_user_tags, remove_tag_from_download,
-    update_tag as repo_update,
+    get_download_tags, get_user_download_by_id, get_user_tag_by_id, get_user_tags,
+    remove_tag_from_download, update_tag as repo_update,
 };
 use crate::utils::{e400, e404, e500};
 use actix_web::{HttpResponse, web};
@@ -203,9 +203,13 @@ pub async fn get_tags_for_download(
     user_id: web::ReqData<UserId>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let download_id = parameters.into_inner();
-    let _user_id = user_id.into_inner();
+    let user_id = user_id.into_inner();
 
-    // TODO: Add ownership check for download
+    // Verify download belongs to user
+    let _ = get_user_download_by_id(download_id, &user_id, &pool)
+        .await
+        .map_err(e500)?
+        .ok_or_else(|| e404("Download not found"))?;
 
     let tags = get_download_tags(download_id, &pool)
         .await

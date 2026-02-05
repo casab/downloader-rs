@@ -145,6 +145,9 @@ async fn search_downloads(
         "SELECT COUNT(*) FROM downloads WHERE {where_clause}"
     );
 
+    // Fetch enough rows to cover the requested page across merged results
+    let fetch_limit = query.offset() + query.limit();
+
     // Data query with relevance score
     let data_query = format!(
         r#"
@@ -156,7 +159,7 @@ async fn search_downloads(
         FROM downloads
         WHERE {where_clause}
         ORDER BY rank DESC
-        LIMIT 100
+        LIMIT {fetch_limit}
         "#
     );
 
@@ -286,15 +289,18 @@ async fn search_folders(
         WHERE user_id = $1 AND search_vector @@ to_tsquery('english', $2)
     "#;
 
-    let data_query = r#"
+    let fetch_limit = query.offset() + query.limit();
+    let data_query = format!(
+        r#"
         SELECT
             id, user_id, parent_id, name, path, created_at, updated_at,
             ts_rank(search_vector, to_tsquery('english', $2)) as rank
         FROM folders
         WHERE user_id = $1 AND search_vector @@ to_tsquery('english', $2)
         ORDER BY rank DESC
-        LIMIT 50
-    "#;
+        LIMIT {fetch_limit}
+        "#
+    );
 
     let count = sqlx::query_scalar::<_, i64>(count_query)
         .bind(user_id.0)
@@ -303,7 +309,7 @@ async fn search_folders(
         .await
         .context("Failed to count folder search results")?;
 
-    let rows = sqlx::query_as::<_, FolderSearchRow>(data_query)
+    let rows = sqlx::query_as::<_, FolderSearchRow>(&data_query)
         .bind(user_id.0)
         .bind(search_term)
         .fetch_all(pool)

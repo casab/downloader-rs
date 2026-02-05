@@ -104,6 +104,19 @@ pub async fn update_download_status(
     error_message: Option<String>,
     pool: &PgPool,
 ) -> Result<Download> {
+    // Fetch current status and validate the transition
+    let current = get_download_by_id(download_id, pool)
+        .await?
+        .ok_or_else(|| anyhow::anyhow!("Download not found: {}", download_id))?;
+
+    if !current.status.can_transition_to(&new_status) {
+        return Err(anyhow::anyhow!(
+            "Invalid status transition from {:?} to {:?}",
+            current.status,
+            new_status
+        ));
+    }
+
     let query = match new_status {
         DownloadStatus::Completed => format!(
             r#"
